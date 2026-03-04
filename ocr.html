@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>截圖文字辨識工具</title>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "PingFang TC", "Microsoft JhengHei", sans-serif;
+    background: #f5f5f5;
+    color: #333;
+    min-height: 100vh;
+    padding: 20px;
+  }
+  .container { max-width: 900px; margin: 0 auto; }
+  h1 {
+    text-align: center;
+    font-size: 24px;
+    margin-bottom: 8px;
+    color: #1a1a1a;
+  }
+  .subtitle {
+    text-align: center;
+    color: #888;
+    font-size: 14px;
+    margin-bottom: 24px;
+  }
+
+  /* API Key area */
+  .api-key-area {
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  .api-key-area summary {
+    cursor: pointer;
+    font-size: 14px;
+    color: #555;
+    user-select: none;
+  }
+  .api-key-area summary:hover { color: #333; }
+  .api-key-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+    align-items: center;
+  }
+  .api-key-row input {
+    flex: 1;
+    padding: 8px 12px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    font-size: 14px;
+    font-family: monospace;
+  }
+  .api-key-row input:focus { outline: none; border-color: #4a90d9; }
+  .api-key-status {
+    font-size: 13px;
+    margin-top: 8px;
+    color: #888;
+  }
+  .api-key-status.ok { color: #27ae60; }
+
+  /* Drop zone */
+  .drop-zone {
+    border: 3px dashed #ccc;
+    border-radius: 12px;
+    padding: 50px 20px;
+    text-align: center;
+    background: #fff;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+  }
+  .drop-zone:hover, .drop-zone.drag-over {
+    border-color: #4a90d9;
+    background: #f0f7ff;
+  }
+  .drop-zone-text {
+    font-size: 18px;
+    color: #666;
+    line-height: 1.8;
+  }
+  .drop-zone-text .key {
+    background: #e8e8e8;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 14px;
+  }
+  .drop-zone input[type="file"] { display: none; }
+
+  /* Engine selector */
+  .options-bar {
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .options-bar label { font-size: 14px; color: #555; }
+  .options-bar select {
+    padding: 6px 12px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    font-size: 14px;
+    font-family: inherit;
+  }
+
+  /* Engine badges */
+  .engine-badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 10px;
+    font-size: 12px;
+    font-weight: bold;
+    vertical-align: middle;
+  }
+  .badge-google { background: #e8f5e9; color: #2e7d32; }
+  .badge-local { background: #e3f2fd; color: #1565c0; }
+
+  /* Preview */
+  .preview-area { margin-top: 16px; display: none; }
+  .preview-area.show { display: block; }
+  .preview-img {
+    max-width: 100%;
+    max-height: 400px;
+    border-radius: 8px;
+    border: 1px solid #ddd;
+    display: block;
+    margin: 0 auto;
+  }
+
+  /* Progress */
+  .progress-area { margin-top: 16px; display: none; }
+  .progress-area.show { display: block; }
+  .progress-bar-bg {
+    background: #e0e0e0;
+    border-radius: 8px;
+    height: 12px;
+    overflow: hidden;
+  }
+  .progress-bar {
+    background: linear-gradient(90deg, #4a90d9, #67b8f7);
+    height: 100%;
+    width: 0%;
+    transition: width 0.3s;
+    border-radius: 8px;
+  }
+  .progress-text {
+    text-align: center;
+    margin-top: 8px;
+    font-size: 14px;
+    color: #666;
+  }
+
+  /* Result */
+  .result-area { margin-top: 20px; display: none; }
+  .result-area.show { display: block; }
+  .result-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+  .result-header h2 { font-size: 18px; }
+  .btn {
+    padding: 8px 20px;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+  }
+  .btn-copy { background: #4a90d9; color: #fff; }
+  .btn-copy:hover { background: #3a7bc8; }
+  .btn-copy.copied { background: #27ae60; }
+  .btn-clear { background: #e74c3c; color: #fff; margin-left: 8px; }
+  .btn-clear:hover { background: #c0392b; }
+  .btn-save { background: #4a90d9; color: #fff; }
+  .btn-save:hover { background: #3a7bc8; }
+  .btn-sm { padding: 6px 14px; font-size: 13px; }
+  .result-text {
+    width: 100%;
+    min-height: 200px;
+    padding: 16px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    font-size: 15px;
+    line-height: 1.8;
+    font-family: inherit;
+    resize: vertical;
+    background: #fff;
+  }
+  .result-text:focus { outline: none; border-color: #4a90d9; }
+
+  .tip {
+    background: #fff9e6;
+    border: 1px solid #f0d060;
+    border-radius: 8px;
+    padding: 12px 16px;
+    font-size: 13px;
+    color: #8a6d00;
+    margin-bottom: 16px;
+    text-align: center;
+  }
+  .engine-info {
+    text-align: center;
+    font-size: 13px;
+    color: #999;
+    margin-top: 8px;
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <h1>截圖文字辨識工具</h1>
+  <p class="subtitle">將截圖轉為可複製的文字，方便貼入 Excel 編碼｜支援印刷體與手寫</p>
+
+  <div class="tip">
+    macOS 截圖：<span style="font-family:monospace">Cmd+Shift+4</span> 框選區域 → 再到此頁面 <span style="font-family:monospace">Cmd+V</span> 貼上
+  </div>
+
+  <!-- API Key Settings -->
+  <div class="api-key-area" id="apiKeyArea">
+    <div id="apiKeySetup">
+      <p style="font-size:15px; font-weight:bold; margin-bottom:10px;">Google Vision API 設定</p>
+      <p style="font-size:13px; color:#666; margin-bottom:12px;">設定後可辨識印刷體與手寫文字。只需設定一次，之後可產生專屬書籤連結，在任何電腦打開都能直接使用。</p>
+      <div class="api-key-row">
+        <input type="password" id="apiKeyInput" placeholder="貼上你的 Google Cloud Vision API Key">
+        <button class="btn btn-save btn-sm" onclick="saveApiKey()">儲存</button>
+      </div>
+      <p class="api-key-status" id="apiKeyStatus"></p>
+    </div>
+    <div id="apiKeyDone" style="display:none;">
+      <p style="font-size:14px; color:#27ae60; margin-bottom:8px;">Google Vision API 已設定完成</p>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <button class="btn btn-sm" style="background:#f0f0f0; color:#333;" onclick="toggleApiKeyEdit()">修改 API Key</button>
+        <button class="btn btn-sm btn-save" onclick="generateBookmark()">產生書籤連結（換電腦用）</button>
+      </div>
+      <p id="bookmarkResult" style="font-size:13px; color:#666; margin-top:8px;"></p>
+    </div>
+  </div>
+
+  <!-- Options -->
+  <div class="options-bar">
+    <label>辨識引擎：</label>
+    <select id="engineSelect">
+      <option value="tesseract" selected>本機 Tesseract（離線可用）</option>
+      <option value="google">Google Vision（印刷+手寫）</option>
+    </select>
+    <label>語言：</label>
+    <select id="langSelect">
+      <option value="chi_tra">繁體中文</option>
+      <option value="chi_tra+eng" selected>繁體中文 + 英文</option>
+      <option value="chi_sim">簡體中文</option>
+      <option value="eng">英文</option>
+    </select>
+  </div>
+
+  <!-- Drop Zone -->
+  <div class="drop-zone" id="dropZone">
+    <div class="drop-zone-text">
+      <span class="key">Cmd+V</span> 貼上截圖<br>
+      或 拖放圖片到此處<br>
+      或 <span style="color:#4a90d9; text-decoration:underline;">點擊選擇檔案</span>
+    </div>
+    <input type="file" id="fileInput" accept="image/*">
+  </div>
+  <p class="engine-info" id="engineInfo"></p>
+
+  <!-- Preview -->
+  <div class="preview-area" id="previewArea">
+    <img class="preview-img" id="previewImg">
+  </div>
+
+  <!-- Progress -->
+  <div class="progress-area" id="progressArea">
+    <div class="progress-bar-bg">
+      <div class="progress-bar" id="progressBar"></div>
+    </div>
+    <p class="progress-text" id="progressText">準備中...</p>
+  </div>
+
+  <!-- Result -->
+  <div class="result-area" id="resultArea">
+    <div class="result-header">
+      <h2>辨識結果</h2>
+      <div>
+        <button class="btn btn-copy" id="copyBtn" onclick="copyText()">複製文字</button>
+        <button class="btn btn-clear" onclick="clearAll()">清除重來</button>
+      </div>
+    </div>
+    <textarea class="result-text" id="resultText" placeholder="辨識結果將顯示在此..."></textarea>
+  </div>
+</div>
+
+<script>
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+const previewArea = document.getElementById('previewArea');
+const previewImg = document.getElementById('previewImg');
+const progressArea = document.getElementById('progressArea');
+const progressBar = document.getElementById('progressBar');
+const progressText = document.getElementById('progressText');
+const resultArea = document.getElementById('resultArea');
+const resultText = document.getElementById('resultText');
+const langSelect = document.getElementById('langSelect');
+const engineSelect = document.getElementById('engineSelect');
+const copyBtn = document.getElementById('copyBtn');
+const apiKeyInput = document.getElementById('apiKeyInput');
+const apiKeyStatus = document.getElementById('apiKeyStatus');
+const apiKeyArea = document.getElementById('apiKeyArea');
+const engineInfo = document.getElementById('engineInfo');
+
+const apiKeySetup = document.getElementById('apiKeySetup');
+const apiKeyDone = document.getElementById('apiKeyDone');
+
+// Load API key from: URL hash > localStorage
+let savedKey = localStorage.getItem('google_vision_api_key');
+const hashKey = window.location.hash.replace('#key=', '');
+if (hashKey && hashKey.length > 10) {
+  savedKey = hashKey;
+  localStorage.setItem('google_vision_api_key', savedKey);
+  // Clean URL without reloading
+  history.replaceState(null, '', window.location.pathname);
+}
+
+if (savedKey) {
+  apiKeyInput.value = savedKey;
+  apiKeySetup.style.display = 'none';
+  apiKeyDone.style.display = 'block';
+}
+updateEngineInfo();
+
+function saveApiKey() {
+  const key = apiKeyInput.value.trim();
+  if (key) {
+    localStorage.setItem('google_vision_api_key', key);
+    savedKey = key;
+    apiKeySetup.style.display = 'none';
+    apiKeyDone.style.display = 'block';
+    engineSelect.value = 'google';
+    updateEngineInfo();
+  }
+}
+
+function toggleApiKeyEdit() {
+  apiKeySetup.style.display = 'block';
+  apiKeyDone.style.display = 'none';
+  apiKeyInput.type = 'text';
+  apiKeyInput.focus();
+}
+
+function generateBookmark() {
+  const key = localStorage.getItem('google_vision_api_key');
+  if (!key) return;
+  const url = window.location.origin + window.location.pathname + '#key=' + key;
+  navigator.clipboard.writeText(url).then(() => {
+    document.getElementById('bookmarkResult').innerHTML =
+      '已複製！請在瀏覽器中加入書籤，之後在任何電腦打開此書籤就能直接使用。<br><span style="font-size:12px;color:#999;">（API Key 藏在網址 # 後面，不會傳到伺服器）</span>';
+  });
+}
+
+function updateEngineInfo() {
+  const engine = engineSelect.value;
+  if (engine === 'google') {
+    const hasKey = apiKeyInput.value.trim() || savedKey;
+    engineInfo.innerHTML = hasKey
+      ? '<span class="engine-badge badge-google">Google Vision</span> 印刷體+手寫皆可辨識'
+      : '<span class="engine-badge badge-google">Google Vision</span> 請先設定 API Key';
+  } else {
+    engineInfo.innerHTML = '<span class="engine-badge badge-local">Tesseract.js</span> 離線可用，僅支援印刷體';
+  }
+}
+engineSelect.addEventListener('change', updateEngineInfo);
+
+// Click to select file
+dropZone.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', (e) => {
+  if (e.target.files.length > 0) processImage(e.target.files[0]);
+});
+
+// Drag and drop
+dropZone.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  dropZone.classList.add('drag-over');
+});
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  if (e.dataTransfer.files.length > 0) processImage(e.dataTransfer.files[0]);
+});
+
+// Paste from clipboard (Cmd+V)
+document.addEventListener('paste', (e) => {
+  // Don't intercept paste if user is editing the result textarea or API key input
+  if (document.activeElement === resultText || document.activeElement === apiKeyInput) return;
+  const items = e.clipboardData.items;
+  for (let i = 0; i < items.length; i++) {
+    if (items[i].type.indexOf('image') !== -1) {
+      e.preventDefault();
+      processImage(items[i].getAsFile());
+      return;
+    }
+  }
+});
+
+function processImage(file) {
+  // Show preview
+  const url = URL.createObjectURL(file);
+  previewImg.src = url;
+  previewArea.classList.add('show');
+  progressArea.classList.add('show');
+  resultArea.classList.remove('show');
+
+  const engine = engineSelect.value;
+  const apiKey = apiKeyInput.value.trim() || localStorage.getItem('google_vision_api_key');
+
+  if (engine === 'google' && apiKey) {
+    processWithGoogle(file, apiKey);
+  } else {
+    processWithTesseract(file);
+  }
+}
+
+// ===== Google Cloud Vision API =====
+function processWithGoogle(file, apiKey) {
+  progressBar.style.width = '30%';
+  progressText.textContent = '正在上傳至 Google Vision...';
+
+  const reader = new FileReader();
+  reader.onload = function() {
+    const base64 = reader.result.split(',')[1];
+
+    progressBar.style.width = '50%';
+    progressText.textContent = '辨識中（Google Vision）...';
+
+    fetch(`https://vision.googleapis.com/v1/images:annotate?key=${apiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        requests: [{
+          image: { content: base64 },
+          features: [{ type: 'DOCUMENT_TEXT_DETECTION' }],
+          imageContext: { languageHints: ['zh-TW', 'en'] }
+        }]
+      })
+    })
+    .then(res => res.json())
+    .then(data => {
+      progressBar.style.width = '100%';
+
+      if (data.error) {
+        throw new Error(data.error.message);
+      }
+
+      const responses = data.responses;
+      if (!responses || !responses[0]) {
+        throw new Error('無回應');
+      }
+
+      if (responses[0].error) {
+        throw new Error(responses[0].error.message);
+      }
+
+      const annotation = responses[0].fullTextAnnotation;
+      if (!annotation) {
+        showResult('（未偵測到文字）');
+        return;
+      }
+
+      const text = cleanText(annotation.text);
+      showResult(text);
+    })
+    .catch(err => {
+      // Fallback to Tesseract on Google error
+      progressText.textContent = `Google Vision 失敗（${err.message}），切換至本機辨識...`;
+      progressBar.style.width = '30%';
+      processWithTesseract(currentFile || file);
+    });
+  };
+  reader.readAsDataURL(file);
+}
+
+// ===== Tesseract.js (Local) =====
+function processWithTesseract(file) {
+  progressBar.style.width = '0%';
+  progressText.textContent = '正在載入本機 OCR 引擎...';
+
+  const lang = langSelect.value;
+
+  Tesseract.recognize(file, lang, {
+    logger: (m) => {
+      if (m.status === 'recognizing text') {
+        const pct = Math.round(m.progress * 100);
+        progressBar.style.width = pct + '%';
+        progressText.textContent = `辨識中（Tesseract）... ${pct}%`;
+      } else if (m.status === 'loading language traineddata') {
+        const pct = Math.round(m.progress * 100);
+        progressBar.style.width = (pct * 0.3) + '%';
+        progressText.textContent = `下載語言包... ${pct}%`;
+      } else if (m.status === 'initializing api') {
+        progressText.textContent = '初始化引擎...';
+      } else if (m.status === 'loading tesseract core') {
+        progressText.textContent = '載入核心...';
+      }
+    }
+  }).then(({ data: { text } }) => {
+    showResult(cleanText(text));
+  }).catch((err) => {
+    progressText.textContent = '辨識失敗：' + err.message;
+    progressBar.style.width = '100%';
+    progressBar.style.background = '#e74c3c';
+  });
+}
+
+// ===== Text cleaning =====
+function cleanText(text) {
+  let cleaned = text.replace(/\f/g, '\n').trim();
+  // Remove spaces between CJK characters
+  cleaned = cleaned.replace(/([\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff])\s+([\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff])/g, '$1$2');
+  cleaned = cleaned.replace(/([\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff])\s+([\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff])/g, '$1$2');
+  // Remove space between CJK and CJK punctuation
+  cleaned = cleaned.replace(/([\u4e00-\u9fff])\s+([，。、；：「」『』（）！？])/g, '$1$2');
+  cleaned = cleaned.replace(/([，。、；：「」『』（）！？])\s+([\u4e00-\u9fff])/g, '$1$2');
+  // Collapse multiple spaces
+  cleaned = cleaned.replace(/ {2,}/g, ' ');
+  // Remove excessive empty lines
+  cleaned = cleaned.replace(/\n{3,}/g, '\n\n');
+  return cleaned;
+}
+
+// ===== Show result =====
+function showResult(text) {
+  progressArea.classList.remove('show');
+  resultArea.classList.add('show');
+  resultText.value = text;
+  resultText.focus();
+  resultText.select();
+}
+
+// ===== Copy =====
+function copyText() {
+  const text = resultText.value;
+  if (!text) return;
+  navigator.clipboard.writeText(text).then(() => {
+    copyBtn.textContent = '已複製！';
+    copyBtn.classList.add('copied');
+    setTimeout(() => {
+      copyBtn.textContent = '複製文字';
+      copyBtn.classList.remove('copied');
+    }, 2000);
+  });
+}
+
+// ===== Clear =====
+function clearAll() {
+  previewArea.classList.remove('show');
+  progressArea.classList.remove('show');
+  resultArea.classList.remove('show');
+  previewImg.src = '';
+  resultText.value = '';
+  progressBar.style.width = '0%';
+  progressBar.style.background = '';
+  fileInput.value = '';
+}
+</script>
+
+</body>
+</html>
