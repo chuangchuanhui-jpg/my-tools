@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>後台管理 - 台大醫院擬真團隊競賽媒合系統</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --primary: #1e40af;
+    --primary-light: #3b82f6;
+    --primary-dark: #1e3a8a;
+    --bg: #f1f5f9;
+    --paper: #ffffff;
+    --border: #cbd5e1;
+    --venue-bg: #ecfdf5;
+    --venue-border: #6ee7b7;
+    --text: #1e293b;
+    --text-muted: #64748b;
+    --danger: #dc2626;
+    --shadow: rgba(0, 0, 0, 0.1);
+    --shadow-lg: rgba(30, 64, 175, 0.25);
+  }
+  
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); font-family: 'Noto Sans TC', sans-serif; color: var(--text); }
+  input, select, button, textarea { font-family: inherit; }
+
+  /* Header */
+  .hdr {
+    background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
+    color: white;
+    padding: 2rem 1.5rem;
+    text-align: center;
+    box-shadow: 0 4px 16px var(--shadow-lg);
+  }
+  
+  .hdr h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    margin: 0;
+  }
+  
+  .hdr .sub {
+    font-size: 0.875rem;
+    opacity: 0.95;
+    margin-top: 0.5rem;
+  }
+
+  /* Container */
+  .container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 2rem 1rem;
+  }
+
+  /* Login Box */
+  .login-box {
+    max-width: 400px;
+    margin: 60px auto;
+    background: var(--paper);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 2.5rem;
+    box-shadow: 0 4px 16px var(--shadow);
+    text-align: center;
+  }
+  
+  .login-box h2 {
+    font-size: 1.75rem;
+    margin-bottom: 0.5rem;
+    color: var(--primary);
+  }
+  
+  .login-box p {
+    font-size: 0.875rem;
+    color: var(--text-muted);
+    margin-bottom: 1.5rem;
+  }
+  
+  .login-box input {
+    width: 100%;
+    padding: 0.875rem 1rem;
+    border: 2px solid var(--border);
+    border-radius: 8px;
+    font-size: 1rem;
+    background: white;
+    margin-bottom: 1rem;
+  }
+  
+  .login-box input:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(30, 64, 175, 0.1);
+  }
+
+  /* Buttons */
+  .btn {
+    border: none;
+    border-radius: 8px;
+    padding: 0.75rem 1.5rem;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  
+  .btn:hover {
+    transform: translateY(-2px);
+  }
+  
+  .btn.primary {
+    background: var(--primary);
+    color: white;
+    box-shadow: 0 4px 12px rgba(30, 64, 175, 0.3);
+  }
+  
+  .btn.primary:hover {
+    background: var(--primary-dark);
+    box-shadow: 0 6px 16px rgba(30, 64, 175, 0.4);
+  }
+  
+  .btn.danger {
+    background: var(--danger);
+    color: white;
+    box-shadow: 0 2px 8px rgba(220, 38, 38, 0.3);
+  }
+  
+  .btn.danger:hover {
+    background: #b91c1c;
+  }
+  
+  .btn.small {
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+  }
+  
+  .btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  /* Section Box */
+  .section {
+    background: var(--paper);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+    box-shadow: 0 2px 8px var(--shadow);
+  }
+  
+  .section-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin-bottom: 1.25rem;
+    color: var(--primary);
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+  
+  .section-title .icon {
+    font-size: 1.5rem;
+  }
+
+  /* Stats */
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+  }
+  
+  .stat-card {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.5rem;
+    text-align: center;
+    box-shadow: 0 1px 3px var(--shadow);
+  }
+  
+  .stat-value {
+    font-size: 2.5rem;
+    font-weight: 700;
+    color: var(--primary);
+  }
+  
+  .stat-label {
+    font-size: 0.875rem;
+    color: var(--text-muted);
+    margin-top: 0.5rem;
+  }
+
+  /* Form */
+  .form-row {
+    display: flex;
+    gap: 1rem;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    margin-bottom: 1rem;
+  }
+  
+  .form-field {
+    flex: 1;
+    min-width: 180px;
+  }
+  
+  .form-field label {
+    display: block;
+    font-size: 0.875rem;
+    font-weight: 500;
+    margin-bottom: 0.5rem;
+    color: var(--text-muted);
+  }
+  
+  .form-field input,
+  .form-field select {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    border: 2px solid var(--border);
+    border-radius: 8px;
+    font-size: 0.875rem;
+    background: white;
+  }
+  
+  .form-field input:focus,
+  .form-field select:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(30, 64, 175, 0.1);
+  }
+
+  /* List */
+  .list {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: white;
+    overflow: hidden;
+  }
+  
+  .list-header {
+    background: var(--primary);
+    color: white;
+    padding: 1rem 1.25rem;
+    font-size: 1rem;
+    font-weight: 600;
+  }
+  
+  .list-body {
+    max-height: 400px;
+    overflow-y: auto;
+  }
+  
+  .list-item {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid #e2e8f0;
+    font-size: 0.875rem;
+  }
+  
+  .list-item:last-child {
+    border-bottom: none;
+  }
+  
+  .list-item:hover {
+    background: #f8fafc;
+  }
+  
+  .list-item .content {
+    flex: 1;
+  }
+  
+  .list-item .badge {
+    display: inline-block;
+    padding: 0.25rem 0.75rem;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-left: 0.5rem;
+  }
+  
+  .badge.matched {
+    background: #dcfce7;
+    color: #16a34a;
+    border: 1px solid #16a34a;
+  }
+  
+  .badge.team {
+    background: #fef3c7;
+    color: #92400e;
+  }
+  
+  .badge.teacher {
+    background: #ddd6fe;
+    color: #5b21b6;
+  }
+
+  /* Toast */
+  .toast {
+    position: fixed;
+    bottom: 2rem;
+    right: 2rem;
+    background: var(--text);
+    color: white;
+    padding: 1rem 1.5rem;
+    border-radius: 8px;
+    box-shadow: 0 8px 24px var(--shadow-lg);
+    z-index: 9999;
+    max-width: 300px;
+    animation: slideIn 0.3s ease;
+  }
+  
+  @keyframes slideIn {
+    from {
+      transform: translateX(400px);
+      opacity: 0;
+    }
+    to {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
+
+  /* Logout */
+  .logout-btn {
+    position: fixed;
+    top: 1.5rem;
+    right: 1.5rem;
+    z-index: 100;
+  }
+
+  @media (max-width: 768px) {
+    .hdr h1 {
+      font-size: 1.5rem;
+    }
+    
+    .container {
+      padding: 1rem 0.75rem;
+    }
+    
+    .section {
+      padding: 1rem;
+    }
+    
+    .form-row {
+      flex-direction: column;
+    }
+    
+    .form-field {
+      width: 100%;
+    }
+    
+    .stats {
+      grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .logout-btn {
+      top: 1rem;
+      right: 1rem;
+    }
+  }
+</style>
+</head>
+<body>
+
+<div id="app"></div>
+
+<script>
+const TEAMS = [
+  { id: 'newcomer', name: '新人組', color: '#fca5a5' },
+  { id: 'critical', name: '急重症照護組', color: '#fdba74' },
+  { id: 'rad_main', name: '醫事放射組（總院）', color: '#fde68a' },
+  { id: 'rad_kids', name: '醫事放射組（兒醫）', color: '#bfdbfe' },
+  { id: 'newborn', name: '新生兒組', color: '#ddd6fe' },
+];
+
+const DEFAULT_PASSWORD = 'ntuh2026';
+const API_URL = 'https://script.google.com/macros/s/AKfycbzE4BAX-b7j5xSQ2ZgV-qX8RAQPvEC6WB4axTBKbddouvlFG6QTUBomp0tQap7K3N3_qA/exec';
+
+let adminData = {
+  slots: {},
+  notifyList: [
+    'hjyang@ntuh.gov.tw',
+    'mandychiu0218@ntuh.gov.tw',
+    'laiyinghui@ntuh.gov.tw'
+  ]
+};
+
+async function loadDataFromAPI() {
+  try {
+    const res = await fetch(`${API_URL}?action=getData`);
+    const data = await res.json();
+    adminData.slots = data.slots || {};
+    adminData.notifyList = data.notifyList || adminData.notifyList;
+  } catch (err) {
+    console.error('Failed to load data:', err);
+    alert('無法連線到資料庫，請重新整理頁面');
+  }
+}
+
+async function apiCall(action, params = {}) {
+  const qs = Object.entries(params)
+    .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
+    .join('&');
+  const url = `${API_URL}?action=${action}${qs ? '&' + qs : ''}`;
+  const res = await fetch(url);
+  return res.json();
+}
+
+function showToast(message) {
+  const toast = document.createElement('div');
+  toast.className = 'toast';
+  toast.textContent = message;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 3000);
+}
+
+async function handleLogin() {
+  const password = document.getElementById('passwordInput').value;
+  if (password === DEFAULT_PASSWORD) {
+    await loadDataFromAPI();
+    renderAdmin();
+  } else {
+    alert('密碼錯誤，請重試');
+  }
+}
+
+function renderLogin() {
+  const app = document.getElementById('app');
+  app.innerHTML = `
+    <div class="hdr">
+      <h1>🔒 後台管理登入</h1>
+      <div class="sub">台大醫院擬真團隊競賽媒合系統</div>
+    </div>
+    
+    <div class="login-box">
+      <h2>管理員登入</h2>
+      <p>請輸入管理密碼以繼續</p>
+      <input type="password" id="passwordInput" placeholder="請輸入密碼" autocomplete="current-password">
+      <button class="btn primary" onclick="handleLogin()">登入 →</button>
+      <p style="margin-top: 1.5rem; font-size: 0.75rem; color: #9ca3af;">
+        <strong>Demo 密碼：</strong> ntuh2026
+      </p>
+    </div>
+  `;
+  
+  document.getElementById('passwordInput').addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') handleLogin();
+  });
+}
+
+function renderAdmin() {
+  if (!adminData.slots) adminData.slots = {};
+  if (!adminData.notifyList) adminData.notifyList = [];
+  
+  const totalSlots = Object.keys(adminData.slots).length;
+  const matchedSlots = Object.values(adminData.slots).filter(s => s && s.team && s.teacher).length;
+  const teamOnlySlots = Object.values(adminData.slots).filter(s => s && s.team && !s.teacher).length;
+  const teacherOnlySlots = Object.values(adminData.slots).filter(s => s && !s.team && s.teacher).length;
+  
+  const app = document.getElementById('app');
+  app.innerHTML = `
+    <div class="hdr">
+      <h1>🔧 後台管理</h1>
+      <div class="sub">台大醫院擬真團隊競賽媒合系統</div>
+    </div>
+    
+    <button class="btn danger logout-btn" onclick="handleLogout()">登出</button>
+    
+    <div class="container">
+      <div class="stats">
+        <div class="stat-card">
+          <div class="stat-value">${totalSlots}</div>
+          <div class="stat-label">總時段數</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">${matchedSlots}</div>
+          <div class="stat-label">已媒合</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">${teamOnlySlots}</div>
+          <div class="stat-label">僅團隊</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">${teacherOnlySlots}</div>
+          <div class="stat-label">僅老師</div>
+        </div>
+      </div>
+      
+      <!-- 預約統計 -->
+      <div class="section">
+        <div class="section-title">
+          <span class="icon">📊</span>
+          預約統計
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem;">
+          <!-- 團隊統計 -->
+          <div>
+            <h3 style="font-size: 1rem; font-weight: 600; margin-bottom: 0.75rem; color: var(--text-muted);">團隊預約</h3>
+            <div id="teamStats"></div>
+          </div>
+          <!-- 老師統計 -->
+          <div>
+            <h3 style="font-size: 1rem; font-weight: 600; margin-bottom: 0.75rem; color: var(--text-muted);">老師預約</h3>
+            <div id="teacherStats"></div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="section">
+        <div class="section-title">
+          <span class="icon">➕</span>
+          新增場地時段
+        </div>
+        <div class="form-row">
+          <div class="form-field">
+            <label>日期</label>
+            <input type="date" id="newDate" min="2026-05-01" max="2026-09-30">
+          </div>
+          <div class="form-field">
+            <label>開始時間</label>
+            <input type="time" id="newStart" value="09:00">
+          </div>
+          <div class="form-field">
+            <label>結束時間</label>
+            <input type="time" id="newEnd" value="11:00">
+          </div>
+          <button class="btn primary" onclick="handleAddSlot()">+ 新增時段</button>
+        </div>
+      </div>
+      
+      <div class="section">
+        <div class="section-title">
+          <span class="icon">📅</span>
+          場地時段列表
+        </div>
+        <div class="list">
+          <div class="list-header">所有時段（${totalSlots}）</div>
+          <div class="list-body" id="slotsList"></div>
+        </div>
+      </div>
+      
+      <div class="section">
+        <div class="section-title">
+          <span class="icon">📧</span>
+          通知收件人
+        </div>
+        <div class="form-row">
+          <div class="form-field">
+            <label>Email 地址</label>
+            <input type="email" id="newEmail" placeholder="example@ntuh.gov.tw">
+          </div>
+          <button class="btn primary" onclick="handleAddEmail()">+ 新增</button>
+        </div>
+        <div class="list" style="margin-top: 1rem;">
+          <div class="list-header">收件人列表（${adminData.notifyList.length}）</div>
+          <div class="list-body" id="emailsList"></div>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  renderSlotsList();
+  renderEmailsList();
+  renderStats();
+}
+
+function renderSlotsList() {
+  const container = document.getElementById('slotsList');
+  const slots = Object.keys(adminData.slots).sort();
+  
+  if (slots.length === 0) {
+    container.innerHTML = '<div style="padding: 2rem; text-align: center; color: #9ca3af;">尚無時段</div>';
+    return;
+  }
+  
+  // 建立老師顏色映射
+  const teacherColorMap = {};
+  const TEACHER_COLORS = [
+    '#a78bfa', '#f472b6', '#fb923c', '#60a5fa', '#c084fc',
+    '#fb7185', '#fbbf24', '#34d399', '#2dd4bf', '#818cf8'
+  ];
+  
+  let colorIndex = 0;
+  Object.values(adminData.slots).forEach(slot => {
+    if (slot.teacher && !teacherColorMap[slot.teacher]) {
+      teacherColorMap[slot.teacher] = TEACHER_COLORS[colorIndex % TEACHER_COLORS.length];
+      colorIndex++;
+    }
+  });
+  
+  container.innerHTML = slots.map(key => {
+    const [date, time] = key.split('_');
+    const slot = adminData.slots[key];
+    const team = slot.team ? TEAMS.find(t => t.id === slot.team) : null;
+    const teacher = slot.teacher;
+    const teacherColor = teacher ? teacherColorMap[teacher] : '#a78bfa';
+    
+    let status = '';
+    if (team && teacher) {
+      status = `
+        <span class="badge matched">✓ 已媒合</span>
+        <span style="display: inline-flex; align-items: center; gap: 0.5rem; margin-left: 0.75rem; flex-wrap: wrap;">
+          <span style="display: inline-block; padding: 0.375rem 0.75rem; border-radius: 6px; background: ${team.color}; border: 1px solid #1e293b; font-size: 0.75rem; font-weight: 600; color: #1e293b;">${team.name}</span>
+          <span style="display: inline-block; padding: 0.375rem 0.75rem; border-radius: 6px; background: ${teacherColor}; border: 1px solid #1e293b; font-size: 0.75rem; font-weight: 600; color: white;">👨‍🏫 ${teacher}</span>
+        </span>
+      `;
+    } else if (team) {
+      status = `
+        <span class="badge team">團隊：${team.name}</span>
+        <span style="display: inline-block; padding: 0.375rem 0.75rem; border-radius: 6px; background: ${team.color}; border: 1px solid #1e293b; font-size: 0.75rem; font-weight: 600; color: #1e293b; margin-left: 0.5rem;">${team.name}</span>
+      `;
+    } else if (teacher) {
+      status = `
+        <span class="badge teacher">老師：${teacher}</span>
+        <span style="display: inline-block; padding: 0.375rem 0.75rem; border-radius: 6px; background: ${teacherColor}; border: 1px solid #1e293b; font-size: 0.75rem; font-weight: 600; color: white; margin-left: 0.5rem;">👨‍🏫 ${teacher}</span>
+      `;
+    }
+    
+    return `
+      <div class="list-item">
+        <div class="content">
+          <strong>${date}</strong> ${time}
+          ${status}
+        </div>
+        ${team || teacher ? `<button class="btn small danger" onclick="handleResetSlot('${key}')">重置</button>` : ''}
+        <button class="btn small danger" onclick="handleDeleteSlot('${key}')">✕ 刪除</button>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderEmailsList() {
+  const container = document.getElementById('emailsList');
+  
+  container.innerHTML = adminData.notifyList.map(email => `
+    <div class="list-item">
+      <div class="content">${email}</div>
+      <button class="btn small danger" onclick="handleDeleteEmail('${email}')">✕</button>
+    </div>
+  `).join('');
+}
+
+function renderStats() {
+  // 統計團隊預約
+  const teamCounts = {};
+  TEAMS.forEach(team => {
+    teamCounts[team.id] = {
+      name: team.name,
+      color: team.color,
+      count: 0
+    };
+  });
+  
+  // 統計老師預約
+  const teacherCounts = {};
+  
+  Object.values(adminData.slots).forEach(slot => {
+    if (slot.team && teamCounts[slot.team]) {
+      teamCounts[slot.team].count++;
+    }
+    if (slot.teacher) {
+      if (!teacherCounts[slot.teacher]) {
+        teacherCounts[slot.teacher] = 0;
+      }
+      teacherCounts[slot.teacher]++;
+    }
+  });
+  
+  // 渲染團隊統計
+  const teamStatsContainer = document.getElementById('teamStats');
+  const teamStatsHTML = TEAMS.map(team => {
+    const count = teamCounts[team.id].count;
+    return `
+      <div style="display: flex; align-items: center; justify-content: space-between; padding: 0.75rem; background: white; border: 1px solid #e2e8f0; border-radius: 6px; margin-bottom: 0.5rem;">
+        <div style="display: flex; align-items: center; gap: 0.75rem;">
+          <div style="width: 16px; height: 16px; border-radius: 3px; background: ${team.color}; border: 1px solid #1e293b;"></div>
+          <span style="font-size: 0.875rem; color: #1e293b;">${team.name}</span>
+        </div>
+        <span style="font-size: 1.125rem; font-weight: 700; color: ${count > 0 ? '#1e40af' : '#9ca3af'};">${count}</span>
+      </div>
+    `;
+  }).join('');
+  
+  if (TEAMS.every(t => teamCounts[t.id].count === 0)) {
+    teamStatsContainer.innerHTML = '<div style="padding: 1rem; text-align: center; color: #9ca3af; font-size: 0.875rem;">尚無團隊預約</div>';
+  } else {
+    teamStatsContainer.innerHTML = teamStatsHTML;
+  }
+  
+  // 渲染老師統計
+  const teacherStatsContainer = document.getElementById('teacherStats');
+  const teacherEntries = Object.entries(teacherCounts).sort((a, b) => b[1] - a[1]);
+  
+  if (teacherEntries.length === 0) {
+    teacherStatsContainer.innerHTML = '<div style="padding: 1rem; text-align: center; color: #9ca3af; font-size: 0.875rem;">尚無老師預約</div>';
+  } else {
+    const teacherStatsHTML = teacherEntries.map(([name, count]) => `
+      <div style="display: flex; align-items: center; justify-content: space-between; padding: 0.75rem; background: white; border: 1px solid #e2e8f0; border-radius: 6px; margin-bottom: 0.5rem;">
+        <span style="font-size: 0.875rem; color: #1e293b;">👨‍🏫 ${name}</span>
+        <span style="font-size: 1.125rem; font-weight: 700; color: #1e40af;">${count}</span>
+      </div>
+    `).join('');
+    teacherStatsContainer.innerHTML = teacherStatsHTML;
+  }
+}
+
+async function handleAddSlot() {
+  const date = document.getElementById('newDate').value;
+  const start = document.getElementById('newStart').value;
+  const end = document.getElementById('newEnd').value;
+
+  if (!date || !start || !end) {
+    alert('請填寫所有欄位');
+    return;
+  }
+
+  if (start >= end) {
+    alert('結束時間必須晚於開始時間');
+    return;
+  }
+
+  const key = `${date}_${start}-${end}`;
+  const result = await apiCall('addSlot', { key });
+  if (result.error) { alert(result.error); return; }
+
+  showToast('✓ 時段已新增');
+  await loadDataFromAPI();
+  renderAdmin();
+}
+
+async function handleDeleteSlot(key) {
+  if (!confirm(`確定要刪除時段 ${key} 嗎？`)) return;
+
+  await apiCall('deleteSlot', { key });
+  showToast('✓ 時段已刪除');
+  await loadDataFromAPI();
+  renderAdmin();
+}
+
+async function handleResetSlot(key) {
+  if (!confirm(`確定要重置時段 ${key} 的預約嗎？`)) return;
+
+  await apiCall('resetSlot', { key });
+  showToast('✓ 時段已重置');
+  await loadDataFromAPI();
+  renderAdmin();
+}
+
+async function handleAddEmail() {
+  const email = document.getElementById('newEmail').value.trim();
+
+  if (!email) { alert('請輸入 Email'); return; }
+  if (!email.includes('@')) { alert('請輸入有效的 Email'); return; }
+  if (adminData.notifyList.includes(email)) { alert('此 Email 已存在'); return; }
+
+  await apiCall('addEmail', { email });
+  showToast('✓ 收件人已新增');
+  document.getElementById('newEmail').value = '';
+  await loadDataFromAPI();
+  renderAdmin();
+}
+
+async function handleDeleteEmail(email) {
+  if (!confirm(`確定要刪除收件人 ${email} 嗎？`)) return;
+
+  await apiCall('deleteEmail', { email });
+  showToast('✓ 收件人已刪除');
+  await loadDataFromAPI();
+  renderAdmin();
+}
+
+function handleLogout() {
+  if (confirm('確定要登出嗎？')) {
+    renderLogin();
+  }
+}
+
+renderLogin();
+</script>
+
+</body>
+</html>

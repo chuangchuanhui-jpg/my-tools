@@ -1,0 +1,1030 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>台大醫院擬真團隊競賽媒合系統</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --primary: #1e40af;
+    --primary-light: #3b82f6;
+    --primary-dark: #1e3a8a;
+    --bg: #f1f5f9;
+    --paper: #ffffff;
+    --border: #cbd5e1;
+    --venue-bg: #ecfdf5;
+    --venue-border: #6ee7b7;
+    --text: #1e293b;
+    --text-muted: #64748b;
+    --shadow: rgba(0, 0, 0, 0.1);
+    --shadow-lg: rgba(30, 64, 175, 0.25);
+  }
+  
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); font-family: 'Noto Sans TC', sans-serif; color: var(--text); }
+  input, select, button, textarea { font-family: inherit; }
+
+  /* Header */
+  .hdr {
+    background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
+    color: white;
+    padding: 2rem 1.5rem;
+    text-align: center;
+    box-shadow: 0 4px 16px var(--shadow-lg);
+  }
+  
+  .hdr h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    margin: 0;
+  }
+  
+  .hdr .sub {
+    font-size: 0.875rem;
+    opacity: 0.95;
+    margin-top: 0.5rem;
+  }
+
+  /* Container */
+  .container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 1.5rem 1rem;
+  }
+
+  /* Section */
+  .section {
+    background: var(--paper);
+    border-radius: 10px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+    box-shadow: 0 1px 3px var(--shadow);
+    border: 1px solid var(--border);
+  }
+  
+  .section-title {
+    font-size: 1.25rem;
+    font-weight: 700;
+    margin-bottom: 1rem;
+    color: var(--primary);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  
+  .section-number {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    background: var(--primary);
+    color: white;
+    border-radius: 50%;
+    font-size: 1rem;
+    font-weight: 700;
+  }
+
+  /* Role Selector */
+  .role-tabs {
+    display: flex;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+  }
+  
+  .role-tab {
+    padding: 0.625rem 1.25rem;
+    border: 2px solid var(--border);
+    background: white;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    flex: 1;
+    min-width: 140px;
+    text-align: center;
+  }
+  
+  .role-tab:hover {
+    border-color: var(--primary);
+    transform: translateY(-1px);
+  }
+  
+  .role-tab.active {
+    background: var(--primary);
+    color: white;
+    border-color: var(--primary);
+  }
+  
+  .field {
+    margin-bottom: 1rem;
+  }
+  
+  .field label {
+    display: block;
+    font-size: 0.875rem;
+    font-weight: 500;
+    margin-bottom: 0.5rem;
+    color: var(--text-muted);
+  }
+  
+  .field select,
+  .field input {
+    width: 100%;
+    max-width: 400px;
+    padding: 0.75rem 1rem;
+    border: 2px solid var(--border);
+    border-radius: 8px;
+    font-size: 1rem;
+    background: white;
+    transition: all 0.2s;
+  }
+  
+  .field select:focus,
+  .field input:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(30, 64, 175, 0.1);
+  }
+
+  /* Calendar */
+  .month-tabs {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+  }
+  
+  .month-tab {
+    padding: 0.625rem 1.25rem;
+    border: 2px solid var(--border);
+    background: white;
+    border-radius: 8px;
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  
+  .month-tab:hover {
+    border-color: var(--primary);
+  }
+  
+  .month-tab.active {
+    background: var(--primary);
+    color: white;
+    border-color: var(--primary);
+  }
+  
+  .cal-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 0.375rem;
+  }
+  
+  .cal-dow {
+    text-align: center;
+    padding: 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-muted);
+  }
+  
+  .cal-cell {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.375rem;
+    min-height: 100px;
+    font-size: 0.75rem;
+  }
+  
+  .cal-cell.empty {
+    background: transparent;
+    border-color: transparent;
+  }
+  
+  .day-num {
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+    color: var(--text-muted);
+  }
+  
+  /* Slot - 3等份設計 */
+  .slot {
+    position: relative;
+    background: var(--venue-bg);
+    border: 2px solid var(--venue-border);
+    border-radius: 6px;
+    padding: 0.5rem 0.375rem;
+    margin-top: 0.25rem;
+    font-size: 0.625rem;
+    min-height: 50px;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    cursor: pointer;
+    transition: all 0.15s;
+    overflow: hidden;
+  }
+  
+  .slot:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px var(--shadow);
+  }
+  
+  .slot.locked {
+    cursor: not-allowed;
+    opacity: 0.6;
+  }
+  
+  /* 左側 1/3 - 團隊色 */
+  .slot .team-bar {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 33.33%;
+    opacity: 0.9;
+    border-radius: 6px 0 0 6px;
+  }
+  
+  /* 右側 1/3 - 老師色 */
+  .slot .teacher-bar {
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 33.33%;
+    opacity: 0.9;
+    border-radius: 0 6px 6px 0;
+  }
+  
+  .slot .time {
+    position: relative;
+    z-index: 2;
+    text-align: center;
+    font-weight: 700;
+    font-size: 0.75rem;
+  }
+  
+  .slot .info {
+    position: relative;
+    z-index: 2;
+    font-size: 0.625rem;
+    line-height: 1.3;
+    color: var(--text);
+  }
+  
+  .slot .info-item {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* 確認送出區塊 */
+  .confirm-section {
+    background: linear-gradient(135deg, #dbeafe 0%, #e0f2fe 100%);
+    border: 2px solid var(--primary);
+    border-radius: 12px;
+    padding: 2rem;
+    text-align: center;
+    box-shadow: 0 4px 16px rgba(30, 64, 175, 0.15);
+  }
+  
+  .confirm-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin-bottom: 1.5rem;
+    color: var(--primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+  }
+  
+  .confirm-number {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    background: var(--primary);
+    color: white;
+    border-radius: 50%;
+    font-size: 1.25rem;
+    font-weight: 700;
+  }
+  
+  .confirm-info {
+    background: white;
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+    text-align: left;
+  }
+  
+  .confirm-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid #e2e8f0;
+  }
+  
+  .confirm-row:last-child {
+    border-bottom: none;
+  }
+  
+  .confirm-label {
+    font-weight: 600;
+    color: var(--text-muted);
+  }
+  
+  .confirm-value {
+    font-weight: 700;
+    color: var(--primary);
+  }
+  
+  .checkbox-wrapper {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+    font-size: 1.125rem;
+  }
+  
+  .checkbox-wrapper input[type="checkbox"] {
+    width: 1.5rem;
+    height: 1.5rem;
+    cursor: pointer;
+  }
+  
+  .btn-submit {
+    padding: 1rem 3rem;
+    background: var(--primary);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 1.125rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s;
+    box-shadow: 0 4px 12px rgba(30, 64, 175, 0.3);
+  }
+  
+  .btn-submit:hover {
+    background: var(--primary-dark);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(30, 64, 175, 0.4);
+  }
+  
+  .btn-submit:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  /* Toast */
+  .toast {
+    position: fixed;
+    bottom: 2rem;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--text);
+    color: white;
+    padding: 1rem 1.5rem;
+    border-radius: 8px;
+    box-shadow: 0 8px 24px var(--shadow-lg);
+    z-index: 1000;
+    max-width: 500px;
+    animation: slideUp 0.3s ease;
+  }
+  
+  @keyframes slideUp {
+    from {
+      transform: translateX(-50%) translateY(100px);
+      opacity: 0;
+    }
+    to {
+      transform: translateX(-50%) translateY(0);
+      opacity: 1;
+    }
+  }
+  
+  .toast-title {
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+  }
+  
+  .toast-emails {
+    font-size: 0.75rem;
+    opacity: 0.9;
+    margin-bottom: 0.5rem;
+  }
+  
+  .toast-summary {
+    font-size: 0.875rem;
+  }
+
+  /* 響應式設計 */
+  @media (max-width: 768px) {
+    .hdr h1 {
+      font-size: 1.5rem;
+    }
+    
+    .container {
+      padding: 1rem 0.75rem;
+    }
+    
+    .section {
+      padding: 1rem;
+    }
+    
+    .section-title {
+      font-size: 1.125rem;
+    }
+    
+    .role-tabs {
+      flex-direction: column;
+    }
+    
+    .role-tab {
+      min-width: auto;
+    }
+    
+    .field select,
+    .field input {
+      max-width: 100%;
+    }
+    
+    .cal-grid {
+      gap: 0.25rem;
+    }
+    
+    .cal-cell {
+      min-height: 85px;
+      padding: 0.25rem;
+    }
+    
+    .slot {
+      min-height: 45px;
+      padding: 0.375rem 0.25rem;
+    }
+    
+    .slot .time {
+      font-size: 0.625rem;
+    }
+    
+    .slot .info {
+      font-size: 0.5625rem;
+    }
+    
+    .confirm-section {
+      padding: 1.5rem 1rem;
+    }
+    
+    .confirm-title {
+      font-size: 1.25rem;
+      flex-direction: column;
+    }
+    
+    .btn-submit {
+      width: 100%;
+      padding: 0.875rem;
+    }
+  }
+  
+  @media (max-width: 480px) {
+    .month-tabs {
+      justify-content: center;
+    }
+    
+    .month-tab {
+      flex: 1;
+      min-width: 60px;
+      padding: 0.5rem 0.75rem;
+      font-size: 0.75rem;
+    }
+    
+    .cal-dow {
+      font-size: 0.625rem;
+      padding: 0.25rem;
+    }
+    
+    .cal-cell {
+      min-height: 75px;
+      font-size: 0.625rem;
+    }
+    
+    .slot {
+      min-height: 40px;
+      padding: 0.25rem;
+    }
+    
+    .slot .time {
+      font-size: 0.5625rem;
+    }
+    
+    .slot .info {
+      font-size: 0.5rem;
+    }
+  }
+</style>
+</head>
+<body>
+
+<div class="hdr">
+  <h1>台大醫院擬真團隊競賽媒合系統</h1>
+  <div class="sub">2026/05 — 09 · NTUH Simulation Competition Matching</div>
+</div>
+
+<div class="container">
+  <!-- 1. 選擇身份 -->
+  <div class="section">
+    <div class="section-title">
+      <span class="section-number">1</span>
+      請選擇身份
+    </div>
+    <div class="role-tabs">
+      <button class="role-tab active" data-role="team">擬真競賽團隊</button>
+      <button class="role-tab" data-role="teacher">指導老師</button>
+    </div>
+    <div id="roleContent"></div>
+  </div>
+
+  <!-- 2. 選擇時段 -->
+  <div class="section">
+    <div class="section-title">
+      <span class="section-number">2</span>
+      請選擇時段
+    </div>
+    <div class="month-tabs" id="monthTabs"></div>
+    <div class="cal-grid" id="calGrid"></div>
+  </div>
+
+  <!-- 3. 確認送出 -->
+  <div class="confirm-section" id="confirmSection" style="display: none;">
+    <div class="confirm-title">
+      <span class="confirm-number">3</span>
+      確認送出
+    </div>
+    <div class="confirm-info" id="confirmInfo"></div>
+    <div class="checkbox-wrapper">
+      <input type="checkbox" id="confirmCheck">
+      <label for="confirmCheck">我確認以上資訊無誤</label>
+    </div>
+    <button class="btn-submit" id="submitBtn" disabled>送出預約</button>
+  </div>
+</div>
+
+<script>
+const TEAMS = [
+  { id: 'newcomer', name: '新人組', color: '#fca5a5' },
+  { id: 'critical', name: '急重症照護組', color: '#fdba74' },
+  { id: 'rad_main', name: '醫事放射組（總院）', color: '#fde68a' },
+  { id: 'rad_kids', name: '醫事放射組（兒醫）', color: '#bfdbfe' },
+  { id: 'newborn', name: '新生兒組', color: '#ddd6fe' },
+];
+
+const TEACHER_COLORS = [
+  '#a78bfa', '#f472b6', '#fb923c', '#60a5fa', '#c084fc',
+  '#fb7185', '#fbbf24', '#34d399', '#2dd4bf', '#818cf8'
+];
+
+const MONTHS = [
+  { y: 2026, m: 5, label: '5月' },
+  { y: 2026, m: 6, label: '6月' },
+  { y: 2026, m: 7, label: '7月' },
+  { y: 2026, m: 8, label: '8月' },
+  { y: 2026, m: 9, label: '9月' },
+];
+
+const API_URL = 'https://script.google.com/macros/s/AKfycbzE4BAX-b7j5xSQ2ZgV-qX8RAQPvEC6WB4axTBKbddouvlFG6QTUBomp0tQap7K3N3_qA/exec';
+const DEFAULT_NOTIFY_LIST = [
+  'hjyang@ntuh.gov.tw',
+  'mandychiu0218@ntuh.gov.tw',
+  'laiyinghui@ntuh.gov.tw'
+];
+
+const pad2 = n => String(n).padStart(2, '0');
+const dateKey = (y, m, d) => `${y}-${pad2(m)}-${pad2(d)}`;
+const daysInMonth = (y, m) => new Date(y, m, 0).getDate();
+const firstDow = (y, m) => new Date(y, m - 1, 1).getDay();
+
+let state = {
+  roleKind: 'team',
+  selectedTeam: null,
+  teacherName: '',
+  currentMonth: 0,
+  slots: {},
+  notifyList: DEFAULT_NOTIFY_LIST,
+  teacherColorMap: {},
+  selectedSlots: []
+};
+
+async function loadDataFromAPI() {
+  try {
+    const res = await fetch(`${API_URL}?action=getData`);
+    const data = await res.json();
+    if (data.slots) state.slots = data.slots;
+    if (data.notifyList) state.notifyList = data.notifyList;
+  } catch (err) {
+    console.error('Failed to load data:', err);
+  }
+}
+
+function getTeacherColor(teacherName) {
+  if (!state.teacherColorMap[teacherName]) {
+    const usedColors = Object.values(state.teacherColorMap);
+    const availableColors = TEACHER_COLORS.filter(c => !usedColors.includes(c));
+    state.teacherColorMap[teacherName] = availableColors[0] || TEACHER_COLORS[0];
+  }
+  return state.teacherColorMap[teacherName];
+}
+
+function showMatchToast(teamName, teacherName, date, time) {
+  const toast = document.createElement('div');
+  toast.className = 'toast';
+  toast.innerHTML = `
+    <div class="toast-title">📧 媒合成功！通知信已寄出</div>
+    <div class="toast-emails">${state.notifyList.join('<br>')}</div>
+    <div class="toast-summary">時段：${date} ${time}<br>團隊：${teamName}　老師：${teacherName}</div>
+  `;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 6000);
+}
+
+function handleSlotClick(slotKey) {
+  const index = state.selectedSlots.indexOf(slotKey);
+  
+  if (index > -1) {
+    // 已選取 -> 取消選取
+    state.selectedSlots.splice(index, 1);
+  } else {
+    // 未選取 -> 加入選取
+    state.selectedSlots.push(slotKey);
+  }
+  
+  renderCalendar();
+  updateConfirmSection();
+}
+
+function updateConfirmSection() {
+  const role = state.roleKind === 'team' && state.selectedTeam
+    ? { kind: 'team', id: state.selectedTeam, name: TEAMS.find(t => t.id === state.selectedTeam)?.name }
+    : state.roleKind === 'teacher' && state.teacherName
+    ? { kind: 'teacher', name: state.teacherName }
+    : null;
+  
+  const confirmSection = document.getElementById('confirmSection');
+  const confirmInfo = document.getElementById('confirmInfo');
+  
+  if (!role || state.selectedSlots.length === 0) {
+    confirmSection.style.display = 'none';
+    return;
+  }
+  
+  let html = `
+    <div class="confirm-row">
+      <span class="confirm-label">身份</span>
+      <span class="confirm-value">${role.kind === 'team' ? '競賽團隊' : '指導老師'}</span>
+    </div>
+  `;
+  
+  if (role.kind === 'team') {
+    html += `
+      <div class="confirm-row">
+        <span class="confirm-label">團隊名稱</span>
+        <span class="confirm-value">${role.name}</span>
+      </div>
+    `;
+  } else {
+    html += `
+      <div class="confirm-row">
+        <span class="confirm-label">老師姓名</span>
+        <span class="confirm-value">${role.name}</span>
+      </div>
+    `;
+  }
+  
+  html += `
+    <div class="confirm-row">
+      <span class="confirm-label">已選時段（可多選）</span>
+      <span class="confirm-value">${state.selectedSlots.length} 個</span>
+    </div>
+  `;
+  
+  // 顯示所有選取的時段
+  html += `<div style="margin-top: 1rem; padding-top: 1rem; border-top: 2px solid #e2e8f0;">`;
+  state.selectedSlots.forEach((slotKey, idx) => {
+    const [date, time] = slotKey.split('_');
+    html += `
+      <div style="display: flex; justify-content: space-between; padding: 0.5rem 0; ${idx < state.selectedSlots.length - 1 ? 'border-bottom: 1px solid #f1f5f9;' : ''}">
+        <span style="color: #64748b;">時段 ${idx + 1}</span>
+        <span style="font-weight: 600; color: #1e40af;">${date} ${time}</span>
+      </div>
+    `;
+  });
+  html += `</div>`;
+  
+  confirmInfo.innerHTML = html;
+  confirmSection.style.display = 'block';
+  
+  // 滾動到確認區塊
+  setTimeout(() => {
+    confirmSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, 100);
+}
+
+async function handleSubmit() {
+  const role = state.roleKind === 'team' && state.selectedTeam
+    ? { kind: 'team', id: state.selectedTeam, name: TEAMS.find(t => t.id === state.selectedTeam)?.name }
+    : state.roleKind === 'teacher' && state.teacherName
+    ? { kind: 'teacher', name: state.teacherName }
+    : null;
+
+  if (!role || state.selectedSlots.length === 0) {
+    alert('請選擇身份和時段');
+    return;
+  }
+
+  const btn = document.getElementById('submitBtn');
+  btn.disabled = true;
+  btn.textContent = '處理中...';
+
+  let successCount = 0;
+  const failedSlots = [];
+  const matchedItems = [];
+
+  for (const slotKey of state.selectedSlots) {
+    const slot = state.slots[slotKey];
+    if (!slot) continue;
+
+    let params = `key=${encodeURIComponent(slotKey)}`;
+    let isCancel = false;
+
+    if (role.kind === 'team') {
+      if (slot.team === role.id) {
+        params += `&teamId=&teamName=`;
+        isCancel = true;
+      } else if (!slot.team) {
+        params += `&teamId=${encodeURIComponent(role.id)}&teamName=${encodeURIComponent(role.name)}&sendEmail=true`;
+      } else {
+        failedSlots.push(slotKey);
+        continue;
+      }
+    } else {
+      if (slot.teacher === role.name) {
+        params += `&teacher=`;
+        isCancel = true;
+      } else if (!slot.teacher) {
+        params += `&teacher=${encodeURIComponent(role.name)}&sendEmail=true`;
+      } else {
+        failedSlots.push(slotKey);
+        continue;
+      }
+    }
+
+    try {
+      const res = await fetch(`${API_URL}?action=saveSlot&${params}`);
+      const data = await res.json();
+      if (data.error === 'conflict_team' || data.error === 'conflict_teacher') {
+        failedSlots.push(slotKey);
+        continue;
+      }
+      successCount++;
+      if (!isCancel && data.matched) {
+        const [date, time] = slotKey.split('_');
+        const teamName = role.kind === 'team' ? role.name : (slot.teamName || TEAMS.find(t => t.id === slot.team)?.name || '');
+        const teacherName = role.kind === 'teacher' ? role.name : (slot.teacher || '');
+        matchedItems.push({ teamName, teacherName, date, time });
+      }
+    } catch (err) {
+      console.error('API error:', err);
+      failedSlots.push(slotKey);
+    }
+  }
+
+  btn.textContent = '送出預約';
+
+  let message = `成功處理 ${successCount} 個時段`;
+  if (failedSlots.length > 0) message += `\n${failedSlots.length} 個時段已被他人預約，無法選取`;
+  alert(message);
+
+  matchedItems.forEach(({ teamName, teacherName, date, time }) => {
+    showMatchToast(teamName, teacherName, date, time);
+  });
+
+  state.selectedSlots = [];
+  document.getElementById('confirmSection').style.display = 'none';
+  document.getElementById('confirmCheck').checked = false;
+  btn.disabled = true;
+
+  await loadDataFromAPI();
+  renderCalendar();
+}
+
+function renderRoleSelector() {
+  const container = document.getElementById('roleContent');
+  
+  if (state.roleKind === 'team') {
+    container.innerHTML = `
+      <div class="field">
+        <label>請選擇您的團隊</label>
+        <select id="teamSelect">
+          <option value="">-- 請選擇 --</option>
+          ${TEAMS.map(t => `
+            <option value="${t.id}" ${state.selectedTeam === t.id ? 'selected' : ''}>
+              ${t.name}
+            </option>
+          `).join('')}
+        </select>
+      </div>
+    `;
+    
+    document.getElementById('teamSelect').addEventListener('change', (e) => {
+      state.selectedTeam = e.target.value || null;
+      state.selectedSlots = [];
+      document.getElementById('confirmSection').style.display = 'none';
+      renderCalendar();
+    });
+  } else {
+    container.innerHTML = `
+      <div class="field">
+        <label>請輸入您的姓名</label>
+        <input 
+          type="text" 
+          id="teacherNameInput" 
+          placeholder="請輸入姓名" 
+          value="${state.teacherName}"
+        >
+      </div>
+    `;
+    
+    document.getElementById('teacherNameInput').addEventListener('input', (e) => {
+      state.teacherName = e.target.value.trim();
+      state.selectedSlots = [];
+      document.getElementById('confirmSection').style.display = 'none';
+      renderCalendar();
+    });
+  }
+}
+
+function renderCalendar() {
+  const month = MONTHS[state.currentMonth];
+  const days = daysInMonth(month.y, month.m);
+  const firstDay = firstDow(month.y, month.m);
+  
+  const container = document.getElementById('calGrid');
+  let cells = '';
+  
+  // Day headers
+  ['日', '一', '二', '三', '四', '五', '六'].forEach(d => {
+    cells += `<div class="cal-dow">${d}</div>`;
+  });
+  
+  // Empty cells
+  for (let i = 0; i < firstDay; i++) {
+    cells += '<div class="cal-cell empty"></div>';
+  }
+  
+  // Day cells
+  for (let d = 1; d <= days; d++) {
+    const dk = dateKey(month.y, month.m, d);
+    const daySlots = Object.keys(state.slots).filter(sk => sk.startsWith(dk));
+    
+    let slotsHTML = '';
+    if (daySlots.length > 0) {
+      slotsHTML = daySlots.map(sk => {
+        const [date, time] = sk.split('_');
+        const slot = state.slots[sk];
+        const team = slot.team ? TEAMS.find(t => t.id === slot.team) : null;
+        const teacher = slot.teacher;
+        
+        const role = state.roleKind === 'team' && state.selectedTeam
+          ? { kind: 'team', id: state.selectedTeam }
+          : state.roleKind === 'teacher' && state.teacherName
+          ? { kind: 'teacher', name: state.teacherName }
+          : null;
+        
+        const canClick = role && (
+          (role.kind === 'team' && (!team || team.id === role.id)) ||
+          (role.kind === 'teacher' && (!teacher || teacher === role.name))
+        );
+        
+        const isSelected = state.selectedSlots.includes(sk);
+        const selectedStyle = isSelected ? 'box-shadow: 0 0 0 3px #1e40af; transform: scale(1.05);' : '';
+        
+        const teamColor = team ? team.color : 'transparent';
+        const teacherColor = teacher ? getTeacherColor(teacher) : 'transparent';
+        
+        const teamBar = team ? `<div class="team-bar" style="background: ${teamColor};"></div>` : '';
+        const teacherBar = teacher ? `<div class="teacher-bar" style="background: ${teacherColor};"></div>` : '';
+        
+        let infoHTML = '';
+        if (team || teacher) {
+          infoHTML = '<div class="info">';
+          if (team) {
+            infoHTML += `<div class="info-item">📦 ${team.name}</div>`;
+          }
+          if (teacher) {
+            infoHTML += `<div class="info-item">👨‍🏫 ${teacher}</div>`;
+          }
+          infoHTML += '</div>';
+        }
+        
+        return `
+          <div 
+            class="slot ${canClick ? '' : 'locked'}"
+            style="${selectedStyle}"
+            onclick="${canClick ? `handleSlotClick('${sk}')` : ''}"
+            title="${time}${team ? ` · ${team.name}` : ''}${teacher ? ` · ${teacher}` : ''}${isSelected ? ' (已選取)' : ''}"
+          >
+            ${teamBar}
+            ${teacherBar}
+            <div class="time">${time.replace('-', '–')}</div>
+            ${infoHTML}
+          </div>
+        `;
+      }).join('');
+    }
+    
+    cells += `
+      <div class="cal-cell">
+        <div class="day-num">${d}</div>
+        ${slotsHTML}
+      </div>
+    `;
+  }
+  
+  container.innerHTML = cells;
+}
+
+async function init() {
+  // 顯示載入中
+  document.getElementById('calGrid').innerHTML = '<div style="grid-column:1/-1;padding:2rem;text-align:center;color:#64748b;">資料載入中...</div>';
+
+  // Role tabs
+  document.querySelectorAll('.role-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.role-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      state.roleKind = tab.dataset.role;
+      state.selectedTeam = null;
+      state.teacherName = '';
+      state.selectedSlots = [];
+      document.getElementById('confirmSection').style.display = 'none';
+      renderRoleSelector();
+      renderCalendar();
+    });
+  });
+
+  // Month tabs
+  const monthTabsContainer = document.getElementById('monthTabs');
+  monthTabsContainer.innerHTML = MONTHS.map((m, i) => `
+    <button
+      class="month-tab ${i === state.currentMonth ? 'active' : ''}"
+      data-index="${i}"
+    >
+      ${m.label}
+    </button>
+  `).join('');
+
+  document.querySelectorAll('.month-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.month-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      state.currentMonth = parseInt(tab.dataset.index);
+      renderCalendar();
+    });
+  });
+
+  // Confirm checkbox
+  document.getElementById('confirmCheck').addEventListener('change', (e) => {
+    document.getElementById('submitBtn').disabled = !e.target.checked;
+  });
+
+  // Submit button
+  document.getElementById('submitBtn').addEventListener('click', handleSubmit);
+
+  // 載入資料並渲染
+  await loadDataFromAPI();
+  renderRoleSelector();
+  renderCalendar();
+
+  // 每 30 秒自動更新資料
+  setInterval(async () => {
+    await loadDataFromAPI();
+    renderCalendar();
+  }, 30000);
+}
+
+init();
+</script>
+
+</body>
+</html>
