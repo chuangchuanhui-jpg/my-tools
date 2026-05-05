@@ -756,9 +756,9 @@ async function handleSubmit() {
   btn.disabled = true;
   btn.textContent = '處理中...';
 
-  let successCount = 0;
+  // 先過濾出可以送出的請求（衝突的提前排除）
+  const requests = [];
   const failedSlots = [];
-  const matchedItems = [];
 
   for (const slotKey of state.selectedSlots) {
     const slot = state.slots[slotKey];
@@ -789,27 +789,41 @@ async function handleSubmit() {
       }
     }
 
-    try {
-      const res = await fetch(`${API_URL}?action=saveSlot&${params}`);
-      const data = await res.json();
-      if (data.error === 'conflict_team' || data.error === 'conflict_teacher') {
-        failedSlots.push(slotKey);
-        continue;
-      }
-      successCount++;
-      if (!isCancel && data.matched) {
-        const [date, time] = slotKey.split('_');
-        const teamName = role.kind === 'team' ? role.name : (slot.teamName || TEAMS.find(t => t.id === slot.team)?.name || '');
-        const teacherName = role.kind === 'teacher' ? role.name : (slot.teacher || '');
-        matchedItems.push({ teamName, teacherName, date, time });
-      }
-    } catch (err) {
-      console.error('API error:', err);
-      failedSlots.push(slotKey);
-    }
+    requests.push({ slotKey, params, isCancel, slot });
   }
 
+  // 所有 API 呼叫同時發出，不再逐一等待
+  const results = await Promise.all(
+    requests.map(async ({ slotKey, params, isCancel, slot }) => {
+      try {
+        const res = await fetch(`${API_URL}?action=saveSlot&${params}`);
+        const data = await res.json();
+        return { slotKey, isCancel, slot, data, ok: true };
+      } catch (err) {
+        console.error('API error:', err);
+        return { slotKey, isCancel, slot, ok: false };
+      }
+    })
+  );
+
   btn.textContent = '送出預約';
+
+  let successCount = 0;
+  const matchedItems = [];
+
+  for (const { slotKey, isCancel, slot, data, ok } of results) {
+    if (!ok || data.error === 'conflict_team' || data.error === 'conflict_teacher') {
+      failedSlots.push(slotKey);
+      continue;
+    }
+    successCount++;
+    if (!isCancel && data.matched) {
+      const [date, time] = slotKey.split('_');
+      const teamName = role.kind === 'team' ? role.name : (slot.teamName || TEAMS.find(t => t.id === slot.team)?.name || '');
+      const teacherName = role.kind === 'teacher' ? role.name : (slot.teacher || '');
+      matchedItems.push({ teamName, teacherName, date, time });
+    }
+  }
 
   let message = `成功處理 ${successCount} 個時段`;
   if (failedSlots.length > 0) message += `\n${failedSlots.length} 個時段已被他人預約，無法選取`;
@@ -824,8 +838,8 @@ async function handleSubmit() {
   document.getElementById('confirmCheck').checked = false;
   btn.disabled = true;
 
-  await loadDataFromAPI();
-  renderCalendar();
+  // 背景更新資料，不阻擋 UI
+  loadDataFromAPI().then(() => renderCalendar());
 }
 
 function renderRoleSelector() {
