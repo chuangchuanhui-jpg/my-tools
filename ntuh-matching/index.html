@@ -646,6 +646,18 @@ function getTeacherColor(teacherName) {
   return state.teacherColorMap[teacherName];
 }
 
+function showConflictToast(count) {
+  const toast = document.createElement('div');
+  toast.className = 'toast';
+  toast.style.background = '#dc2626';
+  toast.innerHTML = `
+    <div class="toast-title">⚠️ ${count} 個時段發生衝突</div>
+    <div class="toast-summary">該時段剛被他人搶先預約，請重新選擇</div>
+  `;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 6000);
+}
+
 function showMatchToast(teamName, teacherName, date, time) {
   const toast = document.createElement('div');
   toast.className = 'toast';
@@ -792,8 +804,25 @@ async function handleSubmit() {
     requests.push({ slotKey, params, isCancel, slot });
   }
 
-  // 所有 API 呼叫同時發出，不再逐一等待
-  const results = await Promise.all(
+  // 樂觀更新：立即更新本地狀態，不等 API
+  for (const { slotKey, isCancel } of requests) {
+    if (isCancel) {
+      if (role.kind === 'team') {
+        state.slots[slotKey] = { ...state.slots[slotKey], team: '', teamName: '' };
+      } else {
+        state.slots[slotKey] = { ...state.slots[slotKey], teacher: '' };
+      }
+    } else {
+      if (role.kind === 'team') {
+        state.slots[slotKey] = { ...state.slots[slotKey], team: role.id, teamName: role.name };
+      } else {
+        state.slots[slotKey] = { ...state.slots[slotKey], teacher: role.name };
+      }
+    }
+  }
+
+  // 在 alert 之前就啟動 API 呼叫，讓請求在背景飛行
+  const apiPromise = Promise.all(
     requests.map(async ({ slotKey, params, isCancel, slot }) => {
       try {
         const res = await fetch(`${API_URL}?action=saveSlot&${params}`);
@@ -808,38 +837,45 @@ async function handleSubmit() {
 
   btn.textContent = '送出預約';
 
-  let successCount = 0;
-  const matchedItems = [];
-
-  for (const { slotKey, isCancel, slot, data, ok } of results) {
-    if (!ok || data.error === 'conflict_team' || data.error === 'conflict_teacher') {
-      failedSlots.push(slotKey);
-      continue;
-    }
-    successCount++;
-    if (!isCancel && data.matched) {
-      const [date, time] = slotKey.split('_');
-      const teamName = role.kind === 'team' ? role.name : (slot.teamName || TEAMS.find(t => t.id === slot.team)?.name || '');
-      const teacherName = role.kind === 'teacher' ? role.name : (slot.teacher || '');
-      matchedItems.push({ teamName, teacherName, date, time });
-    }
-  }
-
-  let message = `成功處理 ${successCount} 個時段`;
+  // 立即顯示成功，不等 API
+  let message = `成功處理 ${requests.length} 個時段`;
   if (failedSlots.length > 0) message += `\n${failedSlots.length} 個時段已被他人預約，無法選取`;
   alert(message);
-
-  matchedItems.forEach(({ teamName, teacherName, date, time }) => {
-    showMatchToast(teamName, teacherName, date, time);
-  });
 
   state.selectedSlots = [];
   document.getElementById('confirmSection').style.display = 'none';
   document.getElementById('confirmCheck').checked = false;
   btn.disabled = true;
+  renderCalendar();
 
-  // 背景更新資料，不阻擋 UI
-  loadDataFromAPI().then(() => renderCalendar());
+  // API 完成後處理衝突與媒合通知
+  apiPromise.then(results => {
+    const conflictSlots = [];
+    const matchedItems = [];
+
+    for (const { slotKey, isCancel, slot, data, ok } of results) {
+      if (!ok || data.error === 'conflict_team' || data.error === 'conflict_teacher') {
+        conflictSlots.push(slotKey);
+        continue;
+      }
+      if (!isCancel && data.matched) {
+        const [date, time] = slotKey.split('_');
+        const teamName = role.kind === 'team' ? role.name : (slot.teamName || TEAMS.find(t => t.id === slot.team)?.name || '');
+        const teacherName = role.kind === 'teacher' ? role.name : (slot.teacher || '');
+        matchedItems.push({ teamName, teacherName, date, time });
+      }
+    }
+
+    if (conflictSlots.length > 0) {
+      showConflictToast(conflictSlots.length);
+    }
+
+    matchedItems.forEach(({ teamName, teacherName, date, time }) => {
+      showMatchToast(teamName, teacherName, date, time);
+    });
+
+    loadDataFromAPI().then(() => renderCalendar());
+  });
 }
 
 function renderRoleSelector() {
