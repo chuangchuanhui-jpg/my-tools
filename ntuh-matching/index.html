@@ -550,7 +550,7 @@
       請選擇身份
     </div>
     <div class="role-tabs">
-      <button class="role-tab active" data-role="team">擬真競賽團隊</button>
+      <button class="role-tab" data-role="team">擬真競賽團隊</button>
       <button class="role-tab" data-role="teacher">指導老師</button>
     </div>
     <div id="roleContent"></div>
@@ -616,7 +616,7 @@ const daysInMonth = (y, m) => new Date(y, m, 0).getDate();
 const firstDow = (y, m) => new Date(y, m - 1, 1).getDay();
 
 let state = {
-  roleKind: 'team',
+  roleKind: null,
   selectedTeam: null,
   teacherName: '',
   currentMonth: 0,
@@ -880,7 +880,12 @@ async function handleSubmit() {
 
 function renderRoleSelector() {
   const container = document.getElementById('roleContent');
-  
+
+  if (!state.roleKind) {
+    container.innerHTML = `<div style="color:#64748b;font-size:0.95rem;">↑ 請先點選上方的身份</div>`;
+    return;
+  }
+
   if (state.roleKind === 'team') {
     container.innerHTML = `
       <div class="field">
