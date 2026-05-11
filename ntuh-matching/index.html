@@ -1076,21 +1076,7 @@ async function init() {
   // 載入資料並渲染
   await loadDataFromAPI();
   if (state.loadError) {
-    const isTimeout = state.loadError === 'timeout';
-    document.getElementById('calGrid').innerHTML = `
-      <div style="grid-column:1/-1;padding:2rem;text-align:center;border-radius:8px;background:#fef2f2;border:1px solid #fecaca;">
-        <div style="font-size:1.5rem;margin-bottom:0.5rem;">⚠️</div>
-        <div style="font-weight:700;color:#dc2626;margin-bottom:0.5rem;">
-          ${isTimeout ? '伺服器回應逾時（20 秒）' : '無法連線至資料庫'}
-        </div>
-        <div style="color:#64748b;font-size:0.875rem;margin-bottom:1rem;">
-          ${isTimeout
-            ? '後台伺服器啟動中，請稍候再<strong>重新整理</strong>'
-            : '請確認網路連線，或嘗試重新整理頁面'}
-        </div>
-        <button onclick="location.reload()" style="padding:0.5rem 1.5rem;background:#1e40af;color:white;border:none;border-radius:6px;cursor:pointer;font-size:0.875rem;">重新整理</button>
-      </div>
-    `;
+    showLoadError();
     return;
   }
   renderRoleSelector();
@@ -1101,6 +1087,40 @@ async function init() {
     await loadDataFromAPI(10000);
     if (!state.loadError) renderCalendar();
   }, 30000);
+}
+
+function showLoadError() {
+  const isTimeout = state.loadError === 'timeout';
+  document.getElementById('calGrid').innerHTML = `
+    <div id="loadErrorBox" style="grid-column:1/-1;padding:2rem;text-align:center;border-radius:8px;background:#fef2f2;border:1px solid #fecaca;">
+      <div style="font-size:1.5rem;margin-bottom:0.5rem;">⚠️</div>
+      <div style="font-weight:700;color:#dc2626;margin-bottom:0.5rem;">
+        ${isTimeout ? '伺服器回應逾時（20 秒）' : '無法連線至資料庫'}
+      </div>
+      <div style="color:#64748b;font-size:0.875rem;margin-bottom:1rem;">
+        ${isTimeout
+          ? '後台伺服器正在啟動，通常等 5 秒後重試即可成功'
+          : '請確認網路連線後重試'}
+      </div>
+      <button id="retryBtn" onclick="retryLoad()" style="padding:0.5rem 1.5rem;background:#1e40af;color:white;border:none;border-radius:6px;cursor:pointer;font-size:0.875rem;">重試</button>
+    </div>
+  `;
+}
+
+async function retryLoad() {
+  const btn = document.getElementById('retryBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '連線中...'; }
+  await loadDataFromAPI(30000);
+  if (state.loadError) {
+    showLoadError();
+  } else {
+    renderRoleSelector();
+    renderCalendar();
+    setInterval(async () => {
+      await loadDataFromAPI(10000);
+      if (!state.loadError) renderCalendar();
+    }, 30000);
+  }
 }
 
 init();
