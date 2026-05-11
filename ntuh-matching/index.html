@@ -623,7 +623,8 @@ let state = {
   slots: {},
   notifyList: DEFAULT_NOTIFY_LIST,
   teacherColorMap: {},
-  selectedSlots: []
+  selectedSlots: [],
+  loadError: false
 };
 
 async function loadDataFromAPI() {
@@ -632,8 +633,10 @@ async function loadDataFromAPI() {
     const data = await res.json();
     if (data.slots) state.slots = data.slots;
     if (data.notifyList) state.notifyList = data.notifyList;
+    state.loadError = false;
   } catch (err) {
     console.error('Failed to load data:', err);
+    state.loadError = true;
   }
 }
 
@@ -1068,13 +1071,27 @@ async function init() {
 
   // 載入資料並渲染
   await loadDataFromAPI();
+  if (state.loadError) {
+    document.getElementById('calGrid').innerHTML = `
+      <div style="grid-column:1/-1;padding:2rem;text-align:center;border-radius:8px;background:#fef2f2;border:1px solid #fecaca;">
+        <div style="font-size:1.5rem;margin-bottom:0.5rem;">⚠️</div>
+        <div style="font-weight:700;color:#dc2626;margin-bottom:0.5rem;">無法連線至資料庫</div>
+        <div style="color:#64748b;font-size:0.875rem;margin-bottom:1rem;">
+          若使用院內網路，請改用<strong>手機行動網路</strong>開啟本頁面<br>
+          （醫院防火牆可能封鎖 Google 服務）
+        </div>
+        <button onclick="location.reload()" style="padding:0.5rem 1.5rem;background:#1e40af;color:white;border:none;border-radius:6px;cursor:pointer;font-size:0.875rem;">重新整理</button>
+      </div>
+    `;
+    return;
+  }
   renderRoleSelector();
   renderCalendar();
 
   // 每 30 秒自動更新資料
   setInterval(async () => {
     await loadDataFromAPI();
-    renderCalendar();
+    if (!state.loadError) renderCalendar();
   }, 30000);
 }
 
