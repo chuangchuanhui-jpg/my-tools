@@ -627,16 +627,20 @@ let state = {
   loadError: false
 };
 
-async function loadDataFromAPI() {
+async function loadDataFromAPI(timeoutMs = 20000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetch(`${API_URL}?action=getData`);
+    const res = await fetch(`${API_URL}?action=getData`, { signal: controller.signal });
+    clearTimeout(timer);
     const data = await res.json();
     if (data.slots) state.slots = data.slots;
     if (data.notifyList) state.notifyList = data.notifyList;
     state.loadError = false;
   } catch (err) {
+    clearTimeout(timer);
+    state.loadError = err.name === 'AbortError' ? 'timeout' : 'network';
     console.error('Failed to load data:', err);
-    state.loadError = true;
   }
 }
 
@@ -1072,13 +1076,17 @@ async function init() {
   // 載入資料並渲染
   await loadDataFromAPI();
   if (state.loadError) {
+    const isTimeout = state.loadError === 'timeout';
     document.getElementById('calGrid').innerHTML = `
       <div style="grid-column:1/-1;padding:2rem;text-align:center;border-radius:8px;background:#fef2f2;border:1px solid #fecaca;">
         <div style="font-size:1.5rem;margin-bottom:0.5rem;">⚠️</div>
-        <div style="font-weight:700;color:#dc2626;margin-bottom:0.5rem;">無法連線至資料庫</div>
+        <div style="font-weight:700;color:#dc2626;margin-bottom:0.5rem;">
+          ${isTimeout ? '伺服器回應逾時（20 秒）' : '無法連線至資料庫'}
+        </div>
         <div style="color:#64748b;font-size:0.875rem;margin-bottom:1rem;">
-          若使用院內網路，請改用<strong>手機行動網路</strong>開啟本頁面<br>
-          （醫院防火牆可能封鎖 Google 服務）
+          ${isTimeout
+            ? '後台伺服器啟動中，請稍候再<strong>重新整理</strong>'
+            : '請確認網路連線，或嘗試重新整理頁面'}
         </div>
         <button onclick="location.reload()" style="padding:0.5rem 1.5rem;background:#1e40af;color:white;border:none;border-radius:6px;cursor:pointer;font-size:0.875rem;">重新整理</button>
       </div>
@@ -1088,9 +1096,9 @@ async function init() {
   renderRoleSelector();
   renderCalendar();
 
-  // 每 30 秒自動更新資料
+  // 每 30 秒自動更新資料（背景更新給短一點的 timeout）
   setInterval(async () => {
-    await loadDataFromAPI();
+    await loadDataFromAPI(10000);
     if (!state.loadError) renderCalendar();
   }, 30000);
 }
