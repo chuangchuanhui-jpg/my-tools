@@ -338,32 +338,69 @@
     .hdr h1 {
       font-size: 1.5rem;
     }
-    
+
     .container {
       padding: 1rem 0.75rem;
     }
-    
+
     .section {
       padding: 1rem;
     }
-    
+
     .form-row {
       flex-direction: column;
     }
-    
+
     .form-field {
       width: 100%;
     }
-    
+
     .stats {
       grid-template-columns: repeat(2, 1fr);
     }
-    
+
     .logout-btn {
       top: 1rem;
       right: 1rem;
     }
   }
+
+  /* Modal */
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.5);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 1000; padding: 1rem;
+  }
+  .modal-box {
+    background: white; border-radius: 12px; padding: 1.75rem;
+    width: 100%; max-width: 500px; max-height: 90vh; overflow-y: auto;
+    box-shadow: 0 20px 60px rgba(0,0,0,.3);
+  }
+  .modal-title {
+    font-size: 1.25rem; font-weight: 700; color: var(--primary);
+    margin: 0 0 .25rem;
+  }
+  .modal-key {
+    font-size: .875rem; color: var(--text-muted);
+    font-family: monospace; margin-bottom: 1.25rem;
+  }
+  .modal-sub {
+    font-size: 1rem; font-weight: 600; color: var(--text);
+    margin: 0 0 .875rem;
+  }
+  .modal-divider {
+    border: none; border-top: 1px solid var(--border); margin: 1.25rem 0;
+  }
+  .modal-warn {
+    font-size: .8rem; color: var(--danger);
+    padding: .5rem .75rem; background: #fef2f2;
+    border-radius: 6px; border: 1px solid #fecaca; margin-bottom: .875rem;
+  }
+  .btn.info {
+    background: #0ea5e9; color: white;
+    box-shadow: 0 2px 8px rgba(14,165,233,.3);
+  }
+  .btn.info:hover { background: #0284c7; }
 </style>
 </head>
 <body>
@@ -628,6 +665,7 @@ function renderSlotsList() {
           <strong>${date}</strong> ${time}
           ${status}
         </div>
+        <button class="btn small info" onclick="openEditModal('${key}')">編輯</button>
         ${team || teacher ? `<button class="btn small danger" onclick="handleResetSlot('${key}')">重置</button>` : ''}
         <button class="btn small danger" onclick="handleDeleteSlot('${key}')">✕ 刪除</button>
       </div>
@@ -779,6 +817,130 @@ function handleLogout() {
   if (confirm('確定要登出嗎？')) {
     renderLogin();
   }
+}
+
+// ── 編輯 Modal ─────────────────────────────────────────────────────────────
+
+let _editKey = null;
+
+function openEditModal(key) {
+  _editKey = key;
+  const slot = adminData.slots[key] || {};
+  const allKeys = Object.keys(adminData.slots).sort();
+
+  const existing = document.getElementById('editModal');
+  if (existing) existing.remove();
+
+  const el = document.createElement('div');
+  el.id = 'editModal';
+  el.className = 'modal-overlay';
+  el.innerHTML = `
+    <div class="modal-box">
+      <div class="modal-title">編輯預約</div>
+      <div class="modal-key">${key}</div>
+
+      <div class="modal-sub">修改預約資料</div>
+      <div class="form-field" style="margin-bottom:.875rem">
+        <label>競賽團隊</label>
+        <select id="editTeamId" style="width:100%;padding:.75rem 1rem;border:2px solid var(--border);border-radius:8px;font-size:.9375rem;background:white">
+          <option value="">（無）</option>
+          ${TEAMS.map(t => `<option value="${t.id}" ${slot.team === t.id ? 'selected' : ''}>${t.name}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-field" style="margin-bottom:1rem">
+        <label>指導老師</label>
+        <input type="text" id="editTeacher"
+          value="${(slot.teacher||'').replace(/"/g,'&quot;')}"
+          placeholder="老師姓名（留空則清除）"
+          style="width:100%;max-width:100%;padding:.75rem 1rem;border:2px solid var(--border);border-radius:8px;font-size:.9375rem">
+      </div>
+      <button class="btn primary" id="editSaveBtn" onclick="handleSaveEdit()">儲存變更</button>
+
+      <hr class="modal-divider">
+
+      <div class="modal-sub">搬移到另一個時段</div>
+      <div class="form-field" style="margin-bottom:.5rem">
+        <label>目標時段</label>
+        <select id="moveTargetKey" style="width:100%;padding:.75rem 1rem;border:2px solid var(--border);border-radius:8px;font-size:.875rem;background:white">
+          <option value="">請選擇目標時段...</option>
+          ${allKeys.filter(k => k !== key).map(k => {
+            const s = adminData.slots[k] || {};
+            const mark = (s.team || s.teacher) ? ' ★已有預約' : '';
+            return `<option value="${k}">${k}${mark}</option>`;
+          }).join('')}
+        </select>
+      </div>
+      <div class="modal-warn">
+        搬移後，本時段預約資料將清空，目標時段原有資料將被覆蓋。<br>★ 代表目標時段已有預約。
+      </div>
+      <button class="btn danger" id="editMoveBtn" onclick="handleMoveSlot()">確認搬移</button>
+
+      <hr class="modal-divider">
+      <button class="btn" onclick="closeEditModal()"
+        style="width:100%;background:#f1f5f9;color:var(--text);box-shadow:none">關閉</button>
+    </div>
+  `;
+
+  el.addEventListener('click', e => { if (e.target === el) closeEditModal(); });
+  document.body.appendChild(el);
+}
+
+function closeEditModal() {
+  const el = document.getElementById('editModal');
+  if (el) el.remove();
+  _editKey = null;
+}
+
+async function handleSaveEdit() {
+  if (!_editKey) return;
+  const teamId   = document.getElementById('editTeamId').value;
+  const teacher  = document.getElementById('editTeacher').value.trim();
+  const teamName = teamId ? (TEAMS.find(t => t.id === teamId)||{}).name || '' : '';
+
+  const btn = document.getElementById('editSaveBtn');
+  btn.disabled = true; btn.textContent = '儲存中...';
+
+  const result = await apiCall('editSlot', {
+    key: _editKey, teamId, teamName, teacher
+  });
+
+  if (result.error) {
+    showToast('錯誤：' + result.error);
+    btn.disabled = false; btn.textContent = '儲存變更';
+    return;
+  }
+  showToast('✓ 預約已更新');
+  closeEditModal();
+  await loadDataFromAPI();
+  renderAdmin();
+}
+
+async function handleMoveSlot() {
+  if (!_editKey) return;
+  const toKey = document.getElementById('moveTargetKey').value;
+  if (!toKey) { alert('請選擇目標時段'); return; }
+
+  const toSlot = adminData.slots[toKey] || {};
+  const hasData = toSlot.team || toSlot.teacher;
+  const msg = hasData
+    ? `目標時段「${toKey}」已有預約資料，搬移後將被覆蓋。\n確定繼續嗎？`
+    : `確定將「${_editKey}」的預約搬移到「${toKey}」嗎？`;
+  if (!confirm(msg)) return;
+
+  const btn = document.getElementById('editMoveBtn');
+  btn.disabled = true; btn.textContent = '搬移中...';
+
+  const result = await apiCall('moveSlot', { fromKey: _editKey, toKey });
+
+  if (result.error) {
+    showToast('錯誤：' + result.error);
+    btn.disabled = false; btn.textContent = '確認搬移';
+    return;
+  }
+  showToast('✓ 預約已搬移');
+  closeEditModal();
+  await loadDataFromAPI();
+  renderAdmin();
 }
 
 renderLogin();
