@@ -439,7 +439,10 @@ let S = {
   notify: DEF_NOTIFY,
   tchColors: {},
   loadError: false,
+  isLoading: false,
+  lastSync: null,
 };
+const CACHE_KEY = 'ntuh_matching_cache_v1';
 
 // ── helpers ───────────────────────────────────────────────────────────────
 function getMonday(d) {
@@ -600,33 +603,110 @@ function getRole() {
 }
 
 // ── API / data ────────────────────────────────────────────────────────────
+function hydrateFromData(data) {
+  if (data.slots) {
+    S.bookings = {};
+    for (const [key, slot] of Object.entries(data.slots)) {
+      const [date, tr] = key.split('_');
+      if (!tr) continue;
+      const [start,end] = tr.split('-');
+      if (!S.bookings[date]) S.bookings[date] = [];
+      S.bookings[date].push({
+        id:key, start, end,
+        teamId:slot.team||'', teamName:slot.teamName||'',
+        teacher:slot.teacher||'', matched:!!(slot.team&&slot.teacher),
+      });
+    }
+  }
+  if (data.notifyList) S.notify = data.notifyList;
+}
+
+function loadCache() {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    if (!raw) return false;
+    const cached = JSON.parse(raw);
+    if (!cached || !cached.data) return false;
+    hydrateFromData(cached.data);
+    S.lastSync = cached.ts;
+    return true;
+  } catch { return false; }
+}
+function saveCache(data) {
+  try { localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), data })); } catch {}
+}
+
 async function loadData(ms=20000) {
+  if (S.isLoading) return;
+  S.isLoading = true;
+  showLoadingIndicator();
   const ctrl = new AbortController();
   const timer = setTimeout(()=>ctrl.abort(), ms);
   try {
     const res = await fetch(`${API_URL}?action=getData`, {signal:ctrl.signal});
     clearTimeout(timer);
-    const data = await res.json();
-    if (data.slots) {
-      S.bookings = {};
-      for (const [key, slot] of Object.entries(data.slots)) {
-        const [date, tr] = key.split('_');
-        if (!tr) continue;
-        const [start,end] = tr.split('-');
-        if (!S.bookings[date]) S.bookings[date] = [];
-        S.bookings[date].push({
-          id:key, start, end,
-          teamId:slot.team||'', teamName:slot.teamName||'',
-          teacher:slot.teacher||'', matched:!!(slot.team&&slot.teacher),
-        });
-      }
+    const ctype = res.headers.get('content-type') || '';
+    if (!res.ok || !ctype.includes('json')) {
+      S.loadError = res.status === 403 || ctype.includes('html') ? 'auth' : 'http_'+res.status;
+      showApiErrorBanner(S.loadError, res.status);
+      return;
     }
-    if (data.notifyList) S.notify = data.notifyList;
+    const data = await res.json();
+    hydrateFromData(data);
+    saveCache(data);
+    S.lastSync = Date.now();
     S.loadError = false;
+    hideApiErrorBanner();
   } catch(err) {
     clearTimeout(timer);
     S.loadError = err.name==='AbortError' ? 'timeout' : 'network';
+    showApiErrorBanner(S.loadError, 0);
+  } finally {
+    S.isLoading = false;
+    hideLoadingIndicator();
   }
+}
+
+function showLoadingIndicator() {
+  let el = document.getElementById('loadingDot');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'loadingDot';
+    el.style.cssText = 'position:fixed;top:12px;right:12px;z-index:9998;padding:8px 14px;background:rgba(30,64,175,.95);color:#fff;border-radius:20px;font-size:13px;font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,.2);display:flex;align-items:center;gap:8px;';
+    el.innerHTML = '<span style="display:inline-block;width:10px;height:10px;border:2px solid #fff;border-top-color:transparent;border-radius:50%;animation:ntuhSpin 0.8s linear infinite;"></span><span>同步資料中…</span>';
+    if (!document.getElementById('ntuhSpinStyle')) {
+      const st = document.createElement('style');
+      st.id = 'ntuhSpinStyle';
+      st.textContent = '@keyframes ntuhSpin { to { transform: rotate(360deg); } }';
+      document.head.appendChild(st);
+    }
+    document.body.appendChild(el);
+  }
+  el.style.display = 'flex';
+}
+function hideLoadingIndicator() {
+  const el = document.getElementById('loadingDot');
+  if (el) el.style.display = 'none';
+}
+
+function showApiErrorBanner(type, status) {
+  let bar = document.getElementById('apiErrBar');
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'apiErrBar';
+    bar.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;padding:14px 20px;background:#dc2626;color:#fff;font-weight:600;text-align:center;font-size:14px;box-shadow:0 2px 8px rgba(0,0,0,.2);';
+    document.body.appendChild(bar);
+  }
+  const msg = type === 'auth'
+    ? `⚠️ 後端 API 失去匿名存取權限（HTTP ${status||403}）— 請聯絡管理員到 Apps Script 重新部署、把「誰可以存取」設為「所有人」`
+    : type === 'timeout'
+      ? '⚠️ 連線後端 API 逾時，請稍候重新整理'
+      : `⚠️ 無法連線後端 API（${type}）— 請聯絡管理員`;
+  bar.textContent = msg;
+}
+function hideApiErrorBanner() {
+  const bar = document.getElementById('apiErrBar');
+  if (bar) bar.remove();
 }
 
 // ── slot availability check ───────────────────────────────────────────────
@@ -858,8 +938,16 @@ async function handleSubmit() {
   });
 
   const apiP = Promise.all(reqs.map(async ({p,params})=>{
-    try { const r=await fetch(`${API_URL}?action=saveSlot&${params}`); return {p, data:await r.json(), ok:true}; }
-    catch { return {p, ok:false}; }
+    const ctrl = new AbortController();
+    const t = setTimeout(()=>ctrl.abort(), 25000);
+    try {
+      const r = await fetch(`${API_URL}?action=saveSlot&${params}`, {signal:ctrl.signal});
+      clearTimeout(t);
+      const ctype = r.headers.get('content-type') || '';
+      if (!r.ok || !ctype.includes('json')) return {p, ok:false, reason:'http_'+r.status};
+      return {p, data:await r.json(), ok:true};
+    }
+    catch (err) { clearTimeout(t); return {p, ok:false, reason: err.name==='AbortError' ? 'timeout' : 'network'}; }
   }));
 
   btn.textContent = '送出預約';
@@ -871,8 +959,12 @@ async function handleSubmit() {
   renderGrid();
 
   apiP.then(results => {
+    const failed = results.filter(r => !r.ok);
+    if (failed.length) {
+      showToast(`⚠️ ${failed.length} 筆寫入失敗`,'網路逾時或後端異常，請稍候重試','#dc2626');
+    }
     results.forEach(({p,data,ok})=>{
-      if (ok && data.matched) {
+      if (ok && data && data.matched) {
         const tn = role.kind==='team' ? role.name : (data.teamName||'');
         const ch = role.kind==='teacher' ? role.name : (data.teacher||'');
         showToast('🎉 媒合成功！通知信已寄出',`${p.date} ${p.start}–${p.end}<br>團隊：${tn}　老師：${ch}`,'#16a34a');
@@ -1032,12 +1124,14 @@ async function init() {
   });
   document.getElementById('btnSub').addEventListener('click', handleSubmit);
 
-  // 先立即顯示，不等 API
+  // 先從 localStorage 快取顯示，使用者第二次以後打開就是瞬間有資料
+  const hasCache = loadCache();
   renderRole(); renderGrid();
 
-  // 背景載入資料，完成後更新
+  // 背景載入最新資料（即使有快取也要更新）
   loadData(15000).then(()=>{ if(!S.loadError) renderGrid(); });
 
+  // 自動重新整理：30 秒一次，內建防堆疊（loadData 用 isLoading flag 擋）
   setInterval(async()=>{ await loadData(8000); if(!S.loadError) renderGrid(); }, 30000);
 }
 

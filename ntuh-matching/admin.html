@@ -431,13 +431,37 @@ let adminData = {
 async function loadDataFromAPI() {
   try {
     const res = await fetch(`${API_URL}?action=getData`);
+    const ctype = res.headers.get('content-type') || '';
+    if (!res.ok || !ctype.includes('json')) {
+      const isAuth = res.status === 403 || ctype.includes('html');
+      showApiErrorBanner(isAuth, res.status);
+      throw new Error(`API HTTP ${res.status} (${ctype})`);
+    }
     const data = await res.json();
     adminData.slots = data.slots || {};
     adminData.notifyList = data.notifyList || adminData.notifyList;
+    hideApiErrorBanner();
   } catch (err) {
     console.error('Failed to load data:', err);
-    alert('無法連線到資料庫，請重新整理頁面');
+    if (!document.getElementById('apiErrBar')) showApiErrorBanner(false, 0);
   }
+}
+
+function showApiErrorBanner(isAuth, status) {
+  let bar = document.getElementById('apiErrBar');
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'apiErrBar';
+    bar.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;padding:14px 20px;background:#dc2626;color:#fff;font-weight:600;text-align:center;font-size:14px;box-shadow:0 2px 8px rgba(0,0,0,.2);';
+    document.body.appendChild(bar);
+  }
+  bar.textContent = isAuth
+    ? `⚠️ 後端 API 失去匿名存取權限（HTTP ${status||403}）— 請到 Apps Script「管理部署 → 編輯 → 誰可以存取：所有人」重新部署`
+    : `⚠️ 無法連線後端 API（HTTP ${status||'?'}）— 請檢查網路或聯絡技術人員`;
+}
+function hideApiErrorBanner() {
+  const bar = document.getElementById('apiErrBar');
+  if (bar) bar.remove();
 }
 
 async function apiCall(action, params = {}) {
