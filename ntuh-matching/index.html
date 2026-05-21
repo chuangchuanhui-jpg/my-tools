@@ -781,9 +781,10 @@ function renderDayBks(bks, date) {
       const tch = tchCoverage.find(c => c.start <= sm && c.end >= em);
       const pct = (em - sm) / totalMins * 100;
       if (tch) {
-        const cc = tchColor(tch.teacher);
+        const tchName = String(tch.teacher || '');
+        const cc = tchColor(tchName);
         rHTML += `<div style="width:100%;height:${pct}%;min-height:0;background:${cc};display:flex;align-items:center;justify-content:center;overflow:hidden;">
-          <span class="bk-vn">${tch.teacher.slice(0,5)}</span></div>`;
+          <span class="bk-vn">${tchName.slice(0,5)}</span></div>`;
       } else {
         rHTML += `<div style="width:100%;height:${pct}%;min-height:0;background:var(--avail-bg);"></div>`;
       }
@@ -863,10 +864,13 @@ function hydrateFromData(data) {
       if (!tr) continue;
       const [start,end] = tr.split('-');
       if (!S.bookings[date]) S.bookings[date] = [];
+      // 一律強制轉字串，避免後端有數字型髒資料時前端整個 renderGrid 中斷
       S.bookings[date].push({
         id:key, start, end,
-        teamId:slot.team||'', teamName:slot.teamName||'',
-        teacher:slot.teacher||'', matched:!!(slot.team&&slot.teacher),
+        teamId:String(slot.team||''),
+        teamName:String(slot.teamName||''),
+        teacher:String(slot.teacher||''),
+        matched:!!(slot.team&&slot.teacher),
       });
     }
   }
