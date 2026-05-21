@@ -118,11 +118,9 @@ input, select, button { font-family: inherit; }
   vertical-align: middle;
 }
 
-/* 團隊視角：綠色 = 有可預約時段，深綠 = 多 */
-.m-cell.team-avail-low  { background: #f0fdf4; border-color: #86efac; cursor: pointer; }
-.m-cell.team-avail-mid  { background: #dcfce7; border-color: #4ade80; cursor: pointer; }
-.m-cell.team-avail-high { background: #bbf7d0; border-color: #16a34a; cursor: pointer; }
-.m-cell.team-booked     { background: #fce7f3; border-color: #f9a8d4; cursor: pointer; }
+/* 團隊視角：綠 = 有可預約時段、粉紅 = 已預約滿、白 = 無時段 */
+.m-cell.team-avail  { background: #dcfce7; border-color: #4ade80; cursor: pointer; }
+.m-cell.team-booked { background: #fce7f3; border-color: #f9a8d4; cursor: pointer; }
 
 /* 老師視角：橘色 = 有團隊在等媒合 */
 .m-cell.tch-wait-low  { background: #fff7ed; border-color: #fdba74; cursor: pointer; }
@@ -628,11 +626,10 @@ function renderMonth() {
   }
 
   if (kind === 'team') {
-    hint.innerHTML = '請先選擇要預約的日期。<strong style="color:#16a34a;">綠色</strong>越深表示當日可預約時段越多。點擊日期展開可預約細節。';
+    hint.innerHTML = '請先選擇要預約的日期。點擊有顏色的日期可展開該週時段細節。';
     legend.innerHTML = `
-      <span><span style="display:inline-block;width:14px;height:14px;background:#bbf7d0;border:1px solid #16a34a;border-radius:3px;vertical-align:middle;margin-right:4px;"></span>多時段可預約</span>
       <span><span style="display:inline-block;width:14px;height:14px;background:#dcfce7;border:1px solid #4ade80;border-radius:3px;vertical-align:middle;margin-right:4px;"></span>有可預約時段</span>
-      <span><span style="display:inline-block;width:14px;height:14px;background:#fce7f3;border:1px solid #f9a8d4;border-radius:3px;vertical-align:middle;margin-right:4px;"></span>當日所有時段已被預約滿</span>
+      <span><span style="display:inline-block;width:14px;height:14px;background:#fce7f3;border:1px solid #f9a8d4;border-radius:3px;vertical-align:middle;margin-right:4px;"></span>已預約滿</span>
       <span><span style="display:inline-block;width:14px;height:14px;background:#fff;border:1px solid #e2e8f0;border-radius:3px;vertical-align:middle;margin-right:4px;"></span>無時段</span>
     `;
   } else {
@@ -672,13 +669,11 @@ function renderMonth() {
       const avail   = slots.filter(s => !s.teamId).length;
       const booked  = slots.filter(s =>  s.teamId).length;
       const total   = slots.length;
-      // 顏色由「可預約數」決定（沿用原本邏輯）
+      // 三色：綠=有可預約、粉=預約滿、白=無時段
       if (total === 0) {
-        // 無時段
-      } else if (avail >= 3) {
-        cellClass += ' team-avail-high clickable';
+        // 無時段（白）
       } else if (avail >= 1) {
-        cellClass += ` team-avail-${avail===1?'low':'mid'} clickable`;
+        cellClass += ' team-avail clickable';
       } else if (booked > 0) {
         cellClass += ' team-booked clickable';
       }
