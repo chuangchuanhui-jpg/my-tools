@@ -672,22 +672,19 @@ function renderMonth() {
       const avail   = slots.filter(s => !s.teamId).length;
       const booked  = slots.filter(s =>  s.teamId).length;
       const total   = slots.length;
+      // 顏色由「可預約數」決定（沿用原本邏輯）
       if (total === 0) {
         // 無時段
       } else if (avail >= 3) {
         cellClass += ' team-avail-high clickable';
-        tag = `<span class="m-tag team">${avail} 時段可預約</span>`;
       } else if (avail >= 1) {
         cellClass += ` team-avail-${avail===1?'low':'mid'} clickable`;
-        tag = `<span class="m-tag team">${avail} 時段可預約</span>`;
       } else if (booked > 0) {
         cellClass += ' team-booked clickable';
-        tag = `<span class="m-tag booked">已被預約</span>`;
       }
-      if (booked > 0 && avail > 0) {
-        countLine = `<div class="m-cnt">已預約 ${booked} 組</div>`;
-      } else if (booked > 0) {
-        countLine = `<div class="m-cnt">${booked} 組已預約</div>`;
+      // 標籤只顯示「已預約 N 組」，沒人預約就不顯示
+      if (booked > 0) {
+        tag = `<span class="m-tag booked">已預約 ${booked} 組</span>`;
       }
     } else {
       // 老師視角：團隊已預約但沒老師 = 等待媒合
