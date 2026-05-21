@@ -665,13 +665,28 @@ function renderMonth() {
     let countLine = '';
 
     if (kind === 'team') {
-      const avail   = slots.filter(s => !s.teamId).length;
-      const booked  = slots.filter(s =>  s.teamId).length;
+      const booked  = slots.filter(s => s.teamId).length;
       const total   = slots.length;
+      // 真實時間覆蓋判定：開放窗口（無 team 的 slot）內若有任何時間未被預約佔用 → 仍可預約
+      const windows = slots.filter(s => !s.teamId).map(s => [t2m(s.start), t2m(s.end)]);
+      const bookings = slots.filter(s =>  s.teamId).map(s => [t2m(s.start), t2m(s.end)]);
+      let hasFreeTime = false;
+      for (const [ws, we] of windows) {
+        const inWin = bookings
+          .filter(([bs, be]) => bs < we && be > ws)
+          .map(([bs, be]) => [Math.max(bs, ws), Math.min(be, we)])
+          .sort((a, b) => a[0] - b[0]);
+        let covered = ws;
+        for (const [bs, be] of inWin) {
+          if (bs > covered) { hasFreeTime = true; break; }
+          covered = Math.max(covered, be);
+        }
+        if (hasFreeTime || covered < we) { hasFreeTime = true; break; }
+      }
       // 三色：綠=有可預約、粉=預約滿、白=無時段
       if (total === 0) {
         // 無時段（白）
-      } else if (avail >= 1) {
+      } else if (hasFreeTime) {
         cellClass += ' team-avail clickable';
       } else if (booked > 0) {
         cellClass += ' team-booked clickable';
