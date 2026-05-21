@@ -76,6 +76,90 @@ input, select, button { font-family: inherit; }
 /* Grid wrapper */
 .grid-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; }
 
+/* ─── 月視圖（第一層）─────────────────────────────── */
+.m-placeholder {
+  padding: 2rem 1rem; text-align: center; color: #64748b;
+  background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px;
+  font-size: 1.0625rem;
+}
+.m-hint {
+  font-size: 1.0625rem; color: var(--text-muted); margin: 0 0 .875rem;
+}
+.month-nav {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; margin: 0 0 .75rem;
+}
+.month-grid {
+  display: grid; grid-template-columns: repeat(7, 1fr);
+  gap: 6px; padding: 8px; background: #f8fafc;
+  border: 1px solid var(--border); border-radius: 8px;
+}
+.m-dow {
+  padding: 6px 4px; text-align: center; font-weight: 600;
+  color: #475569; font-size: .9rem;
+  border-bottom: 1px solid #e2e8f0;
+}
+.m-cell {
+  min-height: 80px; padding: 8px 6px;
+  background: #fff; border: 1px solid #e2e8f0; border-radius: 6px;
+  display: flex; flex-direction: column; gap: 4px;
+  position: relative; transition: transform .1s, box-shadow .1s;
+}
+.m-cell.empty { background: transparent; border: none; }
+.m-cell .m-d {
+  font-weight: 700; font-size: 1.1rem; color: #1e293b; line-height: 1;
+}
+.m-cell.weekend { background: #f1f5f9; }
+.m-cell.weekend .m-d { color: #94a3b8; }
+.m-cell.past { opacity: .35; pointer-events: none; }
+.m-cell.today .m-d::after {
+  content: '今'; margin-left: 4px; padding: 1px 4px;
+  background: #1e40af; color: #fff; font-size: .65rem; border-radius: 3px;
+  vertical-align: middle;
+}
+
+/* 團隊視角：綠色 = 有可預約時段，深綠 = 多 */
+.m-cell.team-avail-low  { background: #f0fdf4; border-color: #86efac; cursor: pointer; }
+.m-cell.team-avail-mid  { background: #dcfce7; border-color: #4ade80; cursor: pointer; }
+.m-cell.team-avail-high { background: #bbf7d0; border-color: #16a34a; cursor: pointer; }
+.m-cell.team-booked     { background: #fce7f3; border-color: #f9a8d4; cursor: pointer; }
+
+/* 老師視角：橘色 = 有團隊在等媒合 */
+.m-cell.tch-wait-low  { background: #fff7ed; border-color: #fdba74; cursor: pointer; }
+.m-cell.tch-wait-mid  { background: #ffedd5; border-color: #fb923c; cursor: pointer; }
+.m-cell.tch-wait-high { background: #fed7aa; border-color: #ea580c; cursor: pointer; }
+
+.m-cell.clickable:hover {
+  transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,.1);
+  z-index: 1;
+}
+.m-tag {
+  font-size: .72rem; padding: 2px 6px; border-radius: 4px;
+  display: inline-block; align-self: flex-start;
+  font-weight: 600;
+}
+.m-tag.team    { background: #16a34a; color: #fff; }
+.m-tag.booked  { background: #db2777; color: #fff; }
+.m-tag.tch     { background: #ea580c; color: #fff; }
+.m-cnt {
+  font-size: .75rem; color: #475569; line-height: 1.3;
+}
+
+.back-btn {
+  background: transparent; border: 1px solid #cbd5e1;
+  padding: 6px 14px; border-radius: 6px; cursor: pointer;
+  font-size: .9rem; color: #475569; margin-bottom: .75rem;
+}
+.back-btn:hover { background: #f1f5f9; color: #1e293b; }
+
+@media (max-width: 600px) {
+  .month-grid { gap: 3px; padding: 4px; }
+  .m-cell { min-height: 56px; padding: 4px 3px; }
+  .m-cell .m-d { font-size: .95rem; }
+  .m-tag { font-size: .65rem; padding: 1px 4px; }
+  .m-cnt { font-size: .65rem; }
+}
+
 /* Week grid – CSS grid (time col wider for larger tick labels) */
 .wgrid {
   display: grid;
@@ -342,31 +426,51 @@ input, select, button { font-family: inherit; }
   <!-- 2 時段 -->
   <div class="section">
     <div class="section-title"><span class="snum">2</span>請選擇時段</div>
-    <p style="font-size:1.0625rem;color:var(--text-muted);margin:0 0 .875rem;">
-      <span style="color:#16a34a;font-weight:600;">綠色區域</span>為空間可借用時段，競賽團隊每次最多 <strong>2 小時</strong>；指導老師不限。
-    </p>
-    <div class="week-nav">
-      <button class="week-btn" id="prevW">‹ 上週</button>
-      <div class="week-label" id="wLabel"></div>
-      <button class="week-btn" id="nextW">下週 ›</button>
+
+    <!-- 月視圖（第一層）— 選身份後預設顯示，點某天展開成週視圖 -->
+    <div id="monthView" style="display:none;">
+      <p class="m-hint" id="monthHint"></p>
+      <div class="month-nav">
+        <button class="week-btn" id="prevM">‹ 上月</button>
+        <div class="week-label" id="mLabel"></div>
+        <button class="week-btn" id="nextM">下月 ›</button>
+      </div>
+      <div class="month-grid" id="mgrid"></div>
+      <div class="m-legend" id="mLegend" style="margin-top:.75rem;display:flex;gap:1rem;flex-wrap:wrap;font-size:.875rem;color:var(--text-muted);"></div>
     </div>
-    <div class="grid-wrap">
-      <div class="wgrid" id="wgrid"></div>
-    </div>
-    <div class="legend-wrap" style="margin-top:.75rem;display:flex;gap:1rem;flex-wrap:wrap;align-items:center;font-size:.875rem;color:var(--text-muted);line-height:1.5;">
-      <!-- block structure explanation -->
-      <span style="display:inline-flex;align-items:center;gap:5px;">
-        <span style="display:inline-flex;width:48px;height:14px;border-radius:3px;overflow:hidden;border:1px solid rgba(0,0,0,.18);flex-shrink:0;">
-          <span style="width:33%;background:#fdba74;"></span>
-          <span style="width:34%;background:#f8fafc;border-left:1px solid rgba(0,0,0,.1);border-right:1px solid rgba(0,0,0,.1);"></span>
-          <span style="width:33%;background:#dcfce7;"></span>
+
+    <!-- 月視圖選身份前的 placeholder -->
+    <div id="monthPlaceholder" class="m-placeholder">↑ 請先點選上方的身份，即可看到整月時段狀況</div>
+
+    <!-- 週視圖（第二層）— 點月視圖某天後展開 -->
+    <div id="weekView" style="display:none;">
+      <button id="backToMonth" class="back-btn">← 回月份檢視</button>
+      <p style="font-size:1.0625rem;color:var(--text-muted);margin:0 0 .875rem;">
+        <span style="color:#16a34a;font-weight:600;">綠色區域</span>為空間可借用時段，競賽團隊每次最多 <strong>2 小時</strong>；指導老師不限。
+      </p>
+      <div class="week-nav">
+        <button class="week-btn" id="prevW">‹ 上週</button>
+        <div class="week-label" id="wLabel"></div>
+        <button class="week-btn" id="nextW">下週 ›</button>
+      </div>
+      <div class="grid-wrap">
+        <div class="wgrid" id="wgrid"></div>
+      </div>
+      <div class="legend-wrap" style="margin-top:.75rem;display:flex;gap:1rem;flex-wrap:wrap;align-items:center;font-size:.875rem;color:var(--text-muted);line-height:1.5;">
+        <!-- block structure explanation -->
+        <span style="display:inline-flex;align-items:center;gap:5px;">
+          <span style="display:inline-flex;width:48px;height:14px;border-radius:3px;overflow:hidden;border:1px solid rgba(0,0,0,.18);flex-shrink:0;">
+            <span style="width:33%;background:#fdba74;"></span>
+            <span style="width:34%;background:#f8fafc;border-left:1px solid rgba(0,0,0,.1);border-right:1px solid rgba(0,0,0,.1);"></span>
+            <span style="width:33%;background:#dcfce7;"></span>
+          </span>
+          每格：左＝團隊色，中＝時段，右＝老師色
         </span>
-        每格：左＝團隊色，中＝時段，右＝老師色
-      </span>
-      <span style="color:#cbd5e1;">｜</span>
-      <span><span style="display:inline-block;width:12px;height:12px;background:#dcfce7;border:1px solid #86efac;border-radius:2px;vertical-align:middle;margin-right:4px;"></span>可預約</span>
-      <span><span style="display:inline-block;width:12px;height:12px;background:#60a5fa;border-radius:2px;vertical-align:middle;margin-right:4px;"></span>中間藍＝媒合成功</span>
-      <span><span style="display:inline-block;width:12px;height:12px;background:#eff6ff;border:2px dashed #1e40af;border-radius:2px;vertical-align:middle;margin-right:4px;"></span>待送出確認</span>
+        <span style="color:#cbd5e1;">｜</span>
+        <span><span style="display:inline-block;width:12px;height:12px;background:#dcfce7;border:1px solid #86efac;border-radius:2px;vertical-align:middle;margin-right:4px;"></span>可預約</span>
+        <span><span style="display:inline-block;width:12px;height:12px;background:#60a5fa;border-radius:2px;vertical-align:middle;margin-right:4px;"></span>中間藍＝媒合成功</span>
+        <span><span style="display:inline-block;width:12px;height:12px;background:#eff6ff;border:2px dashed #1e40af;border-radius:2px;vertical-align:middle;margin-right:4px;"></span>待送出確認</span>
+      </div>
     </div>
   </div>
 
@@ -442,6 +546,8 @@ let S = {
   isLoading: false,
   lastSync: null,
   userMovedWeek: false,
+  viewMode: 'placeholder',          // 'placeholder' | 'month' | 'week'
+  monthDate: new Date(2026, 5, 1),  // 預設 2026 年 6 月
 };
 const CACHE_KEY = 'ntuh_matching_cache_v1';
 
@@ -494,6 +600,138 @@ function countSlotsInWeek(weekMon) {
     n += (S.bookings[date]||[]).length;
   }
   return n;
+}
+
+// ── 視圖切換 ──────────────────────────────────────────────────────────────
+function switchView(mode) {
+  S.viewMode = mode;
+  document.getElementById('monthPlaceholder').style.display = mode==='placeholder' ? '' : 'none';
+  document.getElementById('monthView').style.display        = mode==='month'       ? '' : 'none';
+  document.getElementById('weekView').style.display         = mode==='week'        ? '' : 'none';
+}
+
+// ── 月視圖渲染 ────────────────────────────────────────────────────────────
+function renderMonth() {
+  const kind = S.role;   // 'team' | 'teacher' | null（只看 tab，不要求選完團隊/姓名）
+  const grid = document.getElementById('mgrid');
+  const label = document.getElementById('mLabel');
+  const hint = document.getElementById('monthHint');
+  const legend = document.getElementById('mLegend');
+
+  const year = S.monthDate.getFullYear();
+  const month = S.monthDate.getMonth();
+  label.textContent = `${year} 年 ${month+1} 月`;
+
+  if (!kind) {
+    switchView('placeholder');
+    return;
+  }
+
+  if (kind === 'team') {
+    hint.innerHTML = '請先選擇要預約的日期。<strong style="color:#16a34a;">綠色</strong>越深表示當日可預約時段越多。點擊日期展開可預約細節。';
+    legend.innerHTML = `
+      <span><span style="display:inline-block;width:14px;height:14px;background:#bbf7d0;border:1px solid #16a34a;border-radius:3px;vertical-align:middle;margin-right:4px;"></span>多時段可預約</span>
+      <span><span style="display:inline-block;width:14px;height:14px;background:#dcfce7;border:1px solid #4ade80;border-radius:3px;vertical-align:middle;margin-right:4px;"></span>有可預約時段</span>
+      <span><span style="display:inline-block;width:14px;height:14px;background:#fce7f3;border:1px solid #f9a8d4;border-radius:3px;vertical-align:middle;margin-right:4px;"></span>已被預約（仍可加入媒合）</span>
+      <span><span style="display:inline-block;width:14px;height:14px;background:#fff;border:1px solid #e2e8f0;border-radius:3px;vertical-align:middle;margin-right:4px;"></span>無時段</span>
+    `;
+  } else {
+    hint.innerHTML = '<strong style="color:#ea580c;">橘色</strong>表示當日有競賽團隊已預約、等待老師媒合。點擊日期可進入該週為團隊媒合。';
+    legend.innerHTML = `
+      <span><span style="display:inline-block;width:14px;height:14px;background:#fed7aa;border:1px solid #ea580c;border-radius:3px;vertical-align:middle;margin-right:4px;"></span>多組團隊等待媒合</span>
+      <span><span style="display:inline-block;width:14px;height:14px;background:#ffedd5;border:1px solid #fb923c;border-radius:3px;vertical-align:middle;margin-right:4px;"></span>有團隊等待媒合</span>
+      <span><span style="display:inline-block;width:14px;height:14px;background:#fff;border:1px solid #e2e8f0;border-radius:3px;vertical-align:middle;margin-right:4px;"></span>無等待媒合的時段</span>
+    `;
+  }
+
+  // 月曆網格 — 週一為第一欄
+  const firstDay = new Date(year, month, 1);
+  const lastDay  = new Date(year, month+1, 0);
+  // 週一=0, 週日=6
+  const startOffset = (firstDay.getDay() + 6) % 7;
+  const totalDays = lastDay.getDate();
+  const today = new Date(); today.setHours(0,0,0,0);
+
+  let html = '';
+  ['一','二','三','四','五','六','日'].forEach(d => html += `<div class="m-dow">週${d}</div>`);
+  for (let i = 0; i < startOffset; i++) html += '<div class="m-cell empty"></div>';
+
+  for (let d = 1; d <= totalDays; d++) {
+    const date = new Date(year, month, d);
+    const dateStr = dk(date);
+    const isPast = date < today;
+    const isWeekend = date.getDay() === 0 || date.getDay() === 6;
+    const isToday = sameDay(date, today);
+    const slots = S.bookings[dateStr] || [];
+
+    let cellClass = 'm-cell';
+    let tag = '';
+    let countLine = '';
+
+    if (kind === 'team') {
+      const avail   = slots.filter(s => !s.teamId).length;
+      const booked  = slots.filter(s =>  s.teamId).length;
+      const total   = slots.length;
+      if (total === 0) {
+        // 無時段
+      } else if (avail >= 3) {
+        cellClass += ' team-avail-high clickable';
+        tag = `<span class="m-tag team">${avail} 時段可預約</span>`;
+      } else if (avail >= 1) {
+        cellClass += ` team-avail-${avail===1?'low':'mid'} clickable`;
+        tag = `<span class="m-tag team">${avail} 時段可預約</span>`;
+      } else if (booked > 0) {
+        cellClass += ' team-booked clickable';
+        tag = `<span class="m-tag booked">已被預約</span>`;
+      }
+      if (booked > 0 && avail > 0) {
+        countLine = `<div class="m-cnt">已預約 ${booked} 組</div>`;
+      } else if (booked > 0) {
+        countLine = `<div class="m-cnt">${booked} 組已預約</div>`;
+      }
+    } else {
+      // 老師視角：團隊已預約但沒老師 = 等待媒合
+      const waitTeam = slots.filter(s => s.teamId && !s.teacher).length;
+      const matched  = slots.filter(s => s.teamId &&  s.teacher).length;
+      if (waitTeam >= 3) {
+        cellClass += ' tch-wait-high clickable';
+        tag = `<span class="m-tag tch">${waitTeam} 組等待媒合</span>`;
+      } else if (waitTeam > 0) {
+        cellClass += ` tch-wait-${waitTeam===1?'low':'mid'} clickable`;
+        tag = `<span class="m-tag tch">${waitTeam} 組等待媒合</span>`;
+      } else if (matched > 0) {
+        cellClass += ' clickable';
+        countLine = `<div class="m-cnt">已全數媒合</div>`;
+      }
+    }
+
+    if (isWeekend) cellClass += ' weekend';
+    if (isPast)    cellClass += ' past';
+    if (isToday)   cellClass += ' today';
+
+    const clickAttr = cellClass.includes('clickable')
+      ? `onclick="jumpToWeek('${dateStr}')"`
+      : '';
+    html += `<div class="${cellClass}" ${clickAttr}>
+      <div class="m-d">${d}</div>
+      ${tag}
+      ${countLine}
+    </div>`;
+  }
+
+  grid.innerHTML = html;
+}
+
+function jumpToWeek(dateStr) {
+  S.weekMon = getMonday(new Date(dateStr+'T00:00:00'));
+  S.userMovedWeek = true;
+  switchView('week');
+  renderGrid();
+}
+
+function showMonthView() {
+  switchView('month');
+  renderMonth();
 }
 
 // times for a session (inclusive of end tick)
@@ -1030,7 +1268,10 @@ async function handleSubmit() {
         showToast('🎉 媒合成功！通知信已寄出',`${p.date} ${p.start}–${p.end}<br>團隊：${tn}　老師：${ch}`,'#16a34a');
       }
     });
-    loadData(10000).then(()=>renderGrid());
+    loadData(10000).then(()=>{
+      renderGrid();
+      if (S.viewMode === 'month') renderMonth();
+    });
   });
 }
 
@@ -1166,8 +1407,25 @@ async function init() {
       tab.classList.add('active');
       S.role=tab.dataset.role; S.teamId=null; S.teacherName=''; S.pending=[];
       document.getElementById('confSec').style.display='none';
-      renderRole(); renderGrid();
+      renderRole();
+      // 切身份 → 自動回月視圖（兩種身份的月視圖內容不同）
+      showMonthView();
+      renderGrid();   // 預先把週視圖也渲染好，等使用者點月日切過去
     });
+  });
+
+  // 月視圖月份切換
+  document.getElementById('prevM').addEventListener('click', ()=>{
+    S.monthDate = new Date(S.monthDate.getFullYear(), S.monthDate.getMonth()-1, 1);
+    renderMonth();
+  });
+  document.getElementById('nextM').addEventListener('click', ()=>{
+    S.monthDate = new Date(S.monthDate.getFullYear(), S.monthDate.getMonth()+1, 1);
+    renderMonth();
+  });
+  // 週視圖頂部「← 回月份檢視」
+  document.getElementById('backToMonth').addEventListener('click', ()=>{
+    showMonthView();
   });
 
   document.getElementById('prevW').addEventListener('click', ()=>{ S.weekMon=addDays(S.weekMon,-7); S.userMovedWeek=true; renderGrid(); });
@@ -1188,9 +1446,12 @@ async function init() {
   const hasCache = loadCache();
   if (hasCache) {
     const w = findFirstWeekWithSlots();
-    if (w) S.weekMon = w;   // 自動跳到最近有時段的那一週
+    if (w) S.weekMon = w;   // 週視圖內部用：自動跳到最近有時段的那一週
   }
-  renderRole(); renderGrid();
+  renderRole();
+  // 預設顯示 placeholder（請先選身份）；選身份後會 showMonthView()
+  switchView('placeholder');
+  renderGrid();
 
   // 背景載入最新資料（即使有快取也要更新）
   loadData(15000).then(()=>{
@@ -1201,11 +1462,19 @@ async function init() {
         if (w) S.weekMon = w;
       }
       renderGrid();
+      // 月視圖也要重新渲染（拿到最新資料）
+      if (S.viewMode === 'month') renderMonth();
     }
   });
 
   // 自動重新整理：30 秒一次，內建防堆疊（loadData 用 isLoading flag 擋）
-  setInterval(async()=>{ await loadData(8000); if(!S.loadError) renderGrid(); }, 30000);
+  setInterval(async()=>{
+    await loadData(8000);
+    if (!S.loadError) {
+      renderGrid();
+      if (S.viewMode === 'month') renderMonth();
+    }
+  }, 30000);
 }
 
 init();
