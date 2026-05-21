@@ -1271,6 +1271,14 @@ async function handleSubmit() {
     if (failed.length) {
       showToast(`⚠️ ${failed.length} 筆寫入失敗`,'網路逾時或後端異常，請稍候重試','#dc2626');
     }
+    // 收集後端回傳的「衝突」錯誤（時段重疊、已被預約等）
+    const conflicts = results.filter(r => r.ok && r.data && r.data.error);
+    if (conflicts.length) {
+      conflicts.forEach(({p, data}) => {
+        const msg = data.message || (data.error === 'conflict_team' ? '此時段已被其他團隊預約' : data.error === 'conflict_teacher' ? '此時段已被其他老師預約' : data.error);
+        showToast(`⚠️ ${p.date} ${p.start}–${p.end} 預約失敗`, msg, '#dc2626');
+      });
+    }
     results.forEach(({p,data,ok})=>{
       if (ok && data && data.matched) {
         const tn = role.kind==='team' ? role.name : (data.teamName||'');
@@ -1278,6 +1286,7 @@ async function handleSubmit() {
         showToast('🎉 媒合成功！通知信已寄出',`${p.date} ${p.start}–${p.end}<br>團隊：${tn}　老師：${ch}`,'#16a34a');
       }
     });
+    // reload 會從後端拿真實狀態 → 衝突的樂觀更新自動消失（因為後端沒寫入）
     loadData(10000).then(()=>{
       renderGrid();
       if (S.viewMode === 'month') renderMonth();
