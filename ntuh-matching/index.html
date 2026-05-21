@@ -441,6 +441,7 @@ let S = {
   loadError: false,
   isLoading: false,
   lastSync: null,
+  userMovedWeek: false,
 };
 const CACHE_KEY = 'ntuh_matching_cache_v1';
 
@@ -473,6 +474,27 @@ function tchColor(name) {
 }
 
 function uid() { return Date.now().toString(36)+Math.random().toString(36).slice(2,5); }
+
+// 找出 S.bookings 裡「最近、且 ≥ 今天」的時段，回傳那一週的週一
+// 若所有時段都在過去，回最後一週的週一；若 bookings 為空回 null
+function findFirstWeekWithSlots() {
+  const dates = Object.keys(S.bookings).filter(d => (S.bookings[d]||[]).length > 0).sort();
+  if (!dates.length) return null;
+  const today = new Date(); today.setHours(0,0,0,0);
+  const future = dates.find(d => new Date(d+'T00:00:00') >= today);
+  const target = future || dates[dates.length-1];
+  return getMonday(new Date(target+'T00:00:00'));
+}
+
+// 計算目前顯示週的時段總數（含過去日）
+function countSlotsInWeek(weekMon) {
+  let n = 0;
+  for (let i = 0; i < 5; i++) {
+    const date = dk(addDays(weekMon, i));
+    n += (S.bookings[date]||[]).length;
+  }
+  return n;
+}
 
 // times for a session (inclusive of end tick)
 function sessionTimes(sess) {
@@ -689,6 +711,41 @@ function hideLoadingIndicator() {
   if (el) el.style.display = 'none';
 }
 
+function renderEmptyWeekHint() {
+  let hint = document.getElementById('emptyWeekHint');
+  const hasData = Object.values(S.bookings).some(arr => (arr||[]).length > 0);
+  if (!hasData) {
+    // 完全沒資料時不顯示（API 還沒回來 / 真的沒資料）
+    if (hint) hint.remove();
+    return;
+  }
+  const inWeek = countSlotsInWeek(S.weekMon);
+  if (inWeek > 0) {
+    if (hint) hint.remove();
+    return;
+  }
+  // 當前週 0 個時段 → 找最近有時段的週
+  const target = findFirstWeekWithSlots();
+  if (!target) { if (hint) hint.remove(); return; }
+  const isFuture = target > S.weekMon;
+  const targetLabel = `${target.getFullYear()}/${target.getMonth()+1}/${target.getDate()}`;
+  if (!hint) {
+    hint = document.createElement('div');
+    hint.id = 'emptyWeekHint';
+    hint.style.cssText = 'margin:8px 0 12px;padding:14px 18px;background:#fef3c7;border:2px solid #f59e0b;border-radius:8px;color:#78350f;font-size:.95rem;display:flex;align-items:center;gap:12px;flex-wrap:wrap;';
+    const wrap = document.querySelector('.grid-wrap');
+    if (wrap) wrap.parentNode.insertBefore(hint, wrap);
+  }
+  hint.innerHTML = `<span style="font-size:1.2em;">📅</span>
+    <span><strong>本週無可預約時段</strong>，最近的時段在 <strong>${targetLabel}</strong> 那一週。</span>
+    <button id="jumpToTarget" style="margin-left:auto;padding:6px 14px;background:#f59e0b;color:#fff;border:none;border-radius:6px;font-weight:600;cursor:pointer;font-size:.9rem;">${isFuture?'跳到該週 →':'← 跳到該週'}</button>`;
+  document.getElementById('jumpToTarget').addEventListener('click', () => {
+    S.weekMon = target;
+    S.userMovedWeek = true;
+    renderGrid();
+  });
+}
+
 function showApiErrorBanner(type, status) {
   let bar = document.getElementById('apiErrBar');
   if (!bar) {
@@ -728,6 +785,9 @@ function renderGrid() {
   const s = days[0], e = days[4];
   document.getElementById('wLabel').textContent =
     `${s.getFullYear()} · ${s.getMonth()+1}/${s.getDate()} – ${e.getMonth()+1}/${e.getDate()}`;
+
+  // 空週警示：當前 5 天都沒時段時，顯眼提示使用者翻週
+  renderEmptyWeekHint();
 
   let html = '';
 
@@ -1110,8 +1170,8 @@ async function init() {
     });
   });
 
-  document.getElementById('prevW').addEventListener('click', ()=>{ S.weekMon=addDays(S.weekMon,-7); renderGrid(); });
-  document.getElementById('nextW').addEventListener('click', ()=>{ S.weekMon=addDays(S.weekMon, 7); renderGrid(); });
+  document.getElementById('prevW').addEventListener('click', ()=>{ S.weekMon=addDays(S.weekMon,-7); S.userMovedWeek=true; renderGrid(); });
+  document.getElementById('nextW').addEventListener('click', ()=>{ S.weekMon=addDays(S.weekMon, 7); S.userMovedWeek=true; renderGrid(); });
 
   document.getElementById('mStart').addEventListener('change', () => updateMEnd());
   document.getElementById('mEnd').addEventListener('change', updateMDur);
@@ -1126,10 +1186,23 @@ async function init() {
 
   // 先從 localStorage 快取顯示，使用者第二次以後打開就是瞬間有資料
   const hasCache = loadCache();
+  if (hasCache) {
+    const w = findFirstWeekWithSlots();
+    if (w) S.weekMon = w;   // 自動跳到最近有時段的那一週
+  }
   renderRole(); renderGrid();
 
   // 背景載入最新資料（即使有快取也要更新）
-  loadData(15000).then(()=>{ if(!S.loadError) renderGrid(); });
+  loadData(15000).then(()=>{
+    if (!S.loadError) {
+      // 第一次成功載入：若使用者還在「無時段」週，自動跳到最近有時段的那一週
+      if (!S.userMovedWeek && countSlotsInWeek(S.weekMon) === 0) {
+        const w = findFirstWeekWithSlots();
+        if (w) S.weekMon = w;
+      }
+      renderGrid();
+    }
+  });
 
   // 自動重新整理：30 秒一次，內建防堆疊（loadData 用 isLoading flag 擋）
   setInterval(async()=>{ await loadData(8000); if(!S.loadError) renderGrid(); }, 30000);
