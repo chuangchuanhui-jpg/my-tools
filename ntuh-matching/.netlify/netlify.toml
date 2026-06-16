@@ -1,0 +1,26 @@
+plugins = []
+headers = []
+redirects = []
+
+[functions]
+
+[functions."*"]
+
+[build]
+publish = "/Users/fly/Desktop/IPE論文寫作/99_網頁部署/gh-pages-site/ntuh-matching"
+publishOrigin = "default"
+base = "/Users/fly/Desktop/IPE論文寫作/99_網頁部署/gh-pages-site/ntuh-matching"
+
+[build.environment]
+
+[build.processing]
+
+[build.processing.css]
+
+[build.processing.html]
+
+[build.processing.images]
+
+[build.processing.js]
+
+[build.services]

@@ -519,6 +519,13 @@ const API_URL = 'https://script.google.com/macros/s/AKfycbzE4BAX-b7j5xSQ2ZgV-qX8
 const DEF_NOTIFY = ['hjyang@ntuh.gov.tw','mandychiu0218@ntuh.gov.tw','laiyinghui@ntuh.gov.tw'];
 const DOW = ['日','一','二','三','四','五','六'];
 
+// 標記為「備用時段」的預約（顯示時於組別名後面加註說明）
+const BACKUP_SLOTS = new Set([
+  '2026-07-06_13:00-15:00',
+  '2026-07-06_15:00-17:00',
+  '2026-07-09_13:00-15:00',
+]);
+
 // layout constants (px)
 const SH = 60;            // px per 30-min slot
 const MH = 8 * SH;       // morning zone height  480
@@ -779,9 +786,11 @@ function renderDayBks(bks, date) {
     const topY = t2y(tb.start), bkH = t2y(tb.end) - topY;
     const team = TEAMS.find(t => t.id === tb.teamId);
     const tColor = team?.color || null;
-    const teamLabel = team
+    let teamLabel = team
       ? team.name.replace(/（.*?）/g,'').replace(/組$/,'').slice(0,5)
       : (tb.teamName||'').slice(0,5) || '缺';
+    const isBackup = BACKUP_SLOTS.has(tb.id);
+    if (isBackup) teamLabel += '（備用時段）';
 
     // Build subdivided right section
     const pts = new Set([tbSm, tbEm]);
@@ -810,7 +819,7 @@ function renderDayBks(bks, date) {
     const midBg = isPend ? '#eff6ff' : hasTeacher ? '#60a5fa' : '#f8fafc';
     const pendIds = [tb.pending?tb.id:null, ...overlapping.filter(t=>t.pending).map(t=>t.id)].filter(Boolean);
     const tchNames = tchCoverage.map(c => c.teacher).join(', ') || '（缺老師）';
-    const title = `${tb.start}–${tb.end} | ${team?.name||tb.teamName} | ${tchNames}`;
+    const title = `${tb.start}–${tb.end} | ${team?.name||tb.teamName}${isBackup?'（備用時段）':''} | ${tchNames}`;
 
     html += `<div class="bk${isPend?' pending':''}" style="top:${topY+1}px;height:${Math.max(bkH-2,16)}px;"
       data-pendids="${pendIds.join(',')}" onclick="bkClick(event,'${date}',this)" title="${title}">

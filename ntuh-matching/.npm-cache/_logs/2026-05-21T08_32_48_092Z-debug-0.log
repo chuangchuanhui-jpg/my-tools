@@ -1,0 +1,16 @@
+0 verbose cli /usr/local/bin/node /usr/local/bin/npm
+1 info using npm@11.6.2
+2 info using node@v24.13.0
+3 silly config load:file:/usr/local/lib/node_modules/npm/npmrc
+4 silly config load:file:/Users/fly/.npmrc
+5 silly config load:file:/Users/fly/.npm-global/etc/npmrc
+6 verbose title npm get prefix
+7 verbose argv "get" "prefix" "--global"
+8 verbose logfile logs-max:10 dir:/Users/fly/Desktop/IPE論文寫作/99_網頁部署/gh-pages-site/ntuh-matching/.npm-cache/_logs/2026-05-21T08_32_48_092Z-
+9 verbose logfile /Users/fly/Desktop/IPE論文寫作/99_網頁部署/gh-pages-site/ntuh-matching/.npm-cache/_logs/2026-05-21T08_32_48_092Z-debug-0.log
+10 verbose cwd /Users/fly/Desktop/IPE論文寫作/99_網頁部署/gh-pages-site/ntuh-matching
+11 verbose os Darwin 22.6.0
+12 verbose node v24.13.0
+13 verbose npm  v11.6.2
+14 verbose exit 0
+15 info ok
