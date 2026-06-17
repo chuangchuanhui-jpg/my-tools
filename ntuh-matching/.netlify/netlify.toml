@@ -7,9 +7,9 @@ redirects = []
 [functions."*"]
 
 [build]
-publish = "/Users/fly/Desktop/IPE論文寫作/99_網頁部署/gh-pages-site/ntuh-matching"
+publish = "/Users/fly/Desktop/IPE論文寫作/98_網頁部署/gh-pages-site/ntuh-matching"
 publishOrigin = "default"
-base = "/Users/fly/Desktop/IPE論文寫作/99_網頁部署/gh-pages-site/ntuh-matching"
+base = "/Users/fly/Desktop/IPE論文寫作/98_網頁部署/gh-pages-site/ntuh-matching"
 
 [build.environment]
 
