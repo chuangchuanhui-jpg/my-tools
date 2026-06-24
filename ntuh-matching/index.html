@@ -551,8 +551,9 @@ let S = {
   isLoading: false,
   lastSync: null,
   userMovedWeek: false,
+  userMovedMonth: false,
   viewMode: 'placeholder',          // 'placeholder' | 'month' | 'week'
-  monthDate: new Date(2026, 5, 1),  // 預設 2026 年 6 月
+  monthDate: new Date(2026, 5, 1),  // 初始 fallback；載入資料後自動跳到最近有時段的月份（見 findFirstMonthWithSlots）
 };
 const CACHE_KEY = 'ntuh_matching_cache_v1';
 
@@ -595,6 +596,18 @@ function findFirstWeekWithSlots() {
   const future = dates.find(d => new Date(d+'T00:00:00') >= today);
   const target = future || dates[dates.length-1];
   return getMonday(new Date(target+'T00:00:00'));
+}
+
+// 找出 S.bookings 裡「最近、且 ≥ 今天」的時段所在月份的 1 號（月視圖預設用）
+// 規則與 findFirstWeekWithSlots 一致：全在過去 → 回最後一個時段的月份；bookings 為空 → null
+function findFirstMonthWithSlots() {
+  const dates = Object.keys(S.bookings).filter(d => (S.bookings[d]||[]).length > 0).sort();
+  if (!dates.length) return null;
+  const today = new Date(); today.setHours(0,0,0,0);
+  const future = dates.find(d => new Date(d+'T00:00:00') >= today);
+  const target = future || dates[dates.length-1];
+  const dt = new Date(target+'T00:00:00');
+  return new Date(dt.getFullYear(), dt.getMonth(), 1);
 }
 
 // 計算目前顯示週的時段總數（含過去日）
@@ -1446,10 +1459,12 @@ async function init() {
   // 月視圖月份切換
   document.getElementById('prevM').addEventListener('click', ()=>{
     S.monthDate = new Date(S.monthDate.getFullYear(), S.monthDate.getMonth()-1, 1);
+    S.userMovedMonth = true;
     renderMonth();
   });
   document.getElementById('nextM').addEventListener('click', ()=>{
     S.monthDate = new Date(S.monthDate.getFullYear(), S.monthDate.getMonth()+1, 1);
+    S.userMovedMonth = true;
     renderMonth();
   });
   // 週視圖頂部「← 回月份檢視」
@@ -1476,6 +1491,8 @@ async function init() {
   if (hasCache) {
     const w = findFirstWeekWithSlots();
     if (w) S.weekMon = w;   // 週視圖內部用：自動跳到最近有時段的那一週
+    const m = findFirstMonthWithSlots();
+    if (m && !S.userMovedMonth) S.monthDate = m;   // 月視圖預設：自動跳到最近有時段的月份
   }
   renderRole();
   // 預設顯示 placeholder（請先選身份）；選身份後會 showMonthView()
@@ -1489,6 +1506,11 @@ async function init() {
       if (!S.userMovedWeek && countSlotsInWeek(S.weekMon) === 0) {
         const w = findFirstWeekWithSlots();
         if (w) S.weekMon = w;
+      }
+      // 月視圖預設：第一次成功載入後，若使用者還沒手動切月，跳到最近有時段的月份
+      if (!S.userMovedMonth) {
+        const m = findFirstMonthWithSlots();
+        if (m) S.monthDate = m;
       }
       renderGrid();
       // 月視圖也要重新渲染（拿到最新資料）
