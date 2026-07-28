@@ -554,9 +554,15 @@ let S = {
   userMovedWeek: false,
   userMovedMonth: false,
   viewMode: 'placeholder',          // 'placeholder' | 'month' | 'week'
-  monthDate: new Date(2026, 5, 1),  // 初始 fallback；載入資料後自動跳到最近有時段的月份（見 findFirstMonthWithSlots）
+  // 初始 fallback：用「當月」而非寫死月份。載入資料後會自動跳到最近有時段的月份
+  // （見 findFirstMonthWithSlots）。寫死日期的壞處是一旦那個月整個過去，最壞情況
+  // 會停在一個全是過去日期的月份（2026-07-28 實測過的故障情境）。
+  monthDate: (() => { const n = new Date(); return new Date(n.getFullYear(), n.getMonth(), 1); })(),
 };
 const CACHE_KEY = 'ntuh_matching_cache_v1';
+// 月視圖自動跳月「整個頁面生命週期只做一次」的旗標。
+// 不能每次輪詢都跳：否則分頁開著跨過當月最後一個時段時，月曆會在使用者眼前自己跳掉。
+let didAutoJumpMonth = false;
 
 // ── helpers ───────────────────────────────────────────────────────────────
 function getMonday(d) {
@@ -1509,9 +1515,9 @@ async function init() {
         if (w) S.weekMon = w;
       }
       // 月視圖預設：第一次成功載入後，若使用者還沒手動切月，跳到最近有時段的月份
-      if (!S.userMovedMonth) {
+      if (!S.userMovedMonth && !didAutoJumpMonth) {
         const m = findFirstMonthWithSlots();
-        if (m) S.monthDate = m;
+        if (m) { S.monthDate = m; didAutoJumpMonth = true; }
       }
       renderGrid();
       // 月視圖也要重新渲染（拿到最新資料）
@@ -1523,6 +1529,14 @@ async function init() {
   setInterval(async()=>{
     await loadData(8000);
     if (!S.loadError) {
+      // 補跳月：若「首次載入」失敗過（月份還停在 fallback），這裡是唯一的補救點。
+      // 沒有這段的話，首次請求失敗的使用者即使輪詢成功拿到資料，月視圖仍停在
+      // fallback 月份 —— 實測會看到整月「可點但選不了」的過去日期。
+      // didAutoJumpMonth 確保只跳一次，不會在使用者眼前反覆切月。
+      if (!S.userMovedMonth && !didAutoJumpMonth) {
+        const m = findFirstMonthWithSlots();
+        if (m) { S.monthDate = m; didAutoJumpMonth = true; }
+      }
       renderGrid();
       if (S.viewMode === 'month') renderMonth();
     }
