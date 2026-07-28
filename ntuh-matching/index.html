@@ -936,10 +936,14 @@ function saveCache(data) {
   try { localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), data })); } catch {}
 }
 
-async function loadData(ms=20000) {
-  if (S.isLoading) return;
-  S.isLoading = true;
-  showLoadingIndicator();
+// 畫面上目前有沒有任何可用資料（決定失敗時要不要嚇使用者）
+function hasAnyData() {
+  return Object.values(S.bookings).some(a => a && a.length);
+}
+
+// 單次嘗試。回傳 {ok:true,data} 或 {ok:false,kind,status}
+// kind: 'auth'（真的權限問題，重試無用）/ 'busy'（後端慢或暫時性錯誤，值得重試）/ 'network'
+async function fetchDataOnce(ms) {
   const ctrl = new AbortController();
   const timer = setTimeout(()=>ctrl.abort(), ms);
   try {
@@ -947,20 +951,47 @@ async function loadData(ms=20000) {
     clearTimeout(timer);
     const ctype = res.headers.get('content-type') || '';
     if (!res.ok || !ctype.includes('json')) {
-      S.loadError = res.status === 403 || ctype.includes('html') ? 'auth' : 'http_'+res.status;
-      showApiErrorBanner(S.loadError, res.status);
-      return;
+      // 只有「真的」失去權限才判為 auth。舊版把「任何 HTML 回應」都當成權限問題，
+      // 導致 Google 暫時性的 404「找不到網頁」被誤報成「請去改權限」，害管理員白忙。
+      let body = '';
+      try { body = (await res.text()).slice(0, 3000); } catch {}
+      const isAuth = res.status === 403
+        || /存取遭拒|Access denied|需要授權|Authorization is required/i.test(body);
+      return { ok:false, kind: isAuth ? 'auth' : 'busy', status: res.status };
     }
-    const data = await res.json();
-    hydrateFromData(data);
-    saveCache(data);
-    S.lastSync = Date.now();
-    S.loadError = false;
-    hideApiErrorBanner();
+    return { ok:true, data: await res.json() };
   } catch(err) {
     clearTimeout(timer);
-    S.loadError = err.name==='AbortError' ? 'timeout' : 'network';
-    showApiErrorBanner(S.loadError, 0);
+    return { ok:false, kind: err.name==='AbortError' ? 'busy' : 'network', status:0 };
+  }
+}
+
+// 預設 30 秒逾時、最多 3 次。實測 Google 後端常要 10–35 秒才回應，
+// 舊版背景更新只等 8 秒就放棄並跳紅色橫幅，是「畫面明明有資料卻一直示警」的主因。
+async function loadData(ms=30000, attempts=3) {
+  if (S.isLoading) return;
+  S.isLoading = true;
+  showLoadingIndicator();
+  try {
+    let last = null;
+    for (let i = 0; i < attempts; i++) {
+      if (i) await new Promise(r => setTimeout(r, 2000 * i));   // 退避 2s、4s
+      last = await fetchDataOnce(ms);
+      if (last.ok) {
+        hydrateFromData(last.data);
+        saveCache(last.data);
+        S.lastSync = Date.now();
+        S.loadError = false;
+        hideApiErrorBanner();
+        return;
+      }
+      if (last.kind === 'auth') break;   // 權限問題重試沒有意義
+    }
+    S.loadError = last.kind;
+    // 已經有資料在畫面上 → 安靜重試，不要跳紅旗嚇人（下一輪輪詢會自己補上）。
+    // 只有「真的權限問題」或「完全沒有資料可顯示」才需要提示使用者。
+    if (last.kind === 'auth' || !hasAnyData()) showApiErrorBanner(last.kind, last.status);
+    else hideApiErrorBanner();
   } finally {
     S.isLoading = false;
     hideLoadingIndicator();
@@ -1032,11 +1063,14 @@ function showApiErrorBanner(type, status) {
     bar.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;padding:14px 20px;background:#dc2626;color:#fff;font-weight:600;text-align:center;font-size:14px;box-shadow:0 2px 8px rgba(0,0,0,.2);';
     document.body.appendChild(bar);
   }
+  // 只有真的權限問題才叫管理員去改權限；其餘一律講「暫時忙碌」，避免誤導。
   const msg = type === 'auth'
     ? `⚠️ 後端 API 失去匿名存取權限（HTTP ${status||403}）— 請聯絡管理員到 Apps Script 重新部署、把「誰可以存取」設為「所有人」`
-    : type === 'timeout'
-      ? '⚠️ 連線後端 API 逾時，請稍候重新整理'
-      : `⚠️ 無法連線後端 API（${type}）— 請聯絡管理員`;
+    : type === 'network'
+      ? '⚠️ 網路連線異常 — 請檢查網路後重新整理'
+      : '⏳ 後端回應較慢，正在自動重試…（Google 後端偶爾忙碌，稍候即可，資料不會遺失）';
+  // 忙碌是暫時狀態，用橘色；只有真正要人處理的才用紅色
+  bar.style.background = (type === 'auth' || type === 'network') ? '#dc2626' : '#f59e0b';
   bar.textContent = msg;
 }
 function hideApiErrorBanner() {
@@ -1317,7 +1351,7 @@ async function handleSubmit() {
       }
     });
     // reload 會從後端拿真實狀態 → 衝突的樂觀更新自動消失（因為後端沒寫入）
-    loadData(10000).then(()=>{
+    loadData(30000).then(()=>{
       renderGrid();
       if (S.viewMode === 'month') renderMonth();
     });
@@ -1507,7 +1541,7 @@ async function init() {
   renderGrid();
 
   // 背景載入最新資料（即使有快取也要更新）
-  loadData(15000).then(()=>{
+  loadData(30000).then(()=>{
     if (!S.loadError) {
       // 第一次成功載入：若使用者還在「無時段」週，自動跳到最近有時段的那一週
       if (!S.userMovedWeek && countSlotsInWeek(S.weekMon) === 0) {
@@ -1527,7 +1561,7 @@ async function init() {
 
   // 自動重新整理：30 秒一次，內建防堆疊（loadData 用 isLoading flag 擋）
   setInterval(async()=>{
-    await loadData(8000);
+    await loadData(30000, 2);   // 背景輪詢：30 秒逾時、2 次；反正 30 秒後還會再來一輪
     if (!S.loadError) {
       // 補跳月：若「首次載入」失敗過（月份還停在 fallback），這裡是唯一的補救點。
       // 沒有這段的話，首次請求失敗的使用者即使輪詢成功拿到資料，月視圖仍停在
