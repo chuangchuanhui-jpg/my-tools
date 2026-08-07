@@ -97,6 +97,8 @@ textarea{width:100%; min-height:70px; border:1px solid var(--line); border-radiu
     <h2>選擇範圍</h2>
     <div class="chips" id="scopeChips"></div>
     <button class="big" id="btnStart">開始刷題（10 題）</button>
+    <button class="big" id="btnDrill" style="background:var(--bad); margin-top:9px">
+      只練待克服的錯題</button>
     <div class="note" id="scopeNote"></div>
   </div>
   <div class="card">
@@ -216,14 +218,16 @@ function pickForEntry(e){
   if(!q) q = orig;   // 沒新材料就原題重問
   return q;
 }
-function composeRound(scope){
+// drillOnly：只出待克服考點（錯題專練），不補新題
+function composeRound(scope, drillOnly){
   const items = [];
   const usedK = new Set();
-  const dueEntries = ST.queue.slice(0, MAX_REDO_PER_ROUND);
+  const dueEntries = ST.queue.slice(0, drillOnly ? ROUND_N : MAX_REDO_PER_ROUND);
   for(const e of dueEntries){
     const q = pickForEntry(e);
     if(q && !usedK.has(q.k)){ items.push({q, entryK:e.k}); usedK.add(q.k); }
   }
+  if(drillOnly) return shuffle(items);
   let pool = IDX.bank.filter(q => inScope(q, scope) && !seen(q.k) && !usedK.has(q.k)
                                   && !ST.queue.some(e => e.k === q.k));
   shuffle(pool);
@@ -288,6 +292,7 @@ function renderHome(){
   $("stDone").textContent = Object.keys(ST.q).length;
   $("stAcc").textContent = ST.answered ? Math.round(100*ST.correct/ST.answered) + "%" : "–";
   $("stQueue").textContent = ST.queue.length;
+  $("btnDrill").disabled = !ST.queue.length;
   $("queuePreview").textContent = ST.queue.length
     ? "待克服：" + ST.queue.slice(0,3).map(e => (IDX.byK[e.k]?.stem||"").slice(0,18)+"…").join("／") + (ST.queue.length>3 ? ` 等 ${ST.queue.length} 個` : "")
     : "目前沒有待克服的錯題，讚！";
@@ -298,10 +303,13 @@ function renderHome(){
   $("flaggedNote").textContent = ST.flagged.length ? `已回報 ${ST.flagged.length} 題有問題（老師會處理）` : "";
 }
 
-function startRound(){
-  const items = composeRound(ST.scope);
-  if(!items.length){ alert("這個範圍沒有可出的題目"); return; }
-  RUN = {items, i:0, results:[]};
+function startRound(drillOnly){
+  const items = composeRound(ST.scope, drillOnly === true);
+  if(!items.length){
+    alert(drillOnly ? "目前沒有待克服的錯題，先去刷一輪吧！" : "這個範圍沒有可出的題目");
+    return;
+  }
+  RUN = {items, i:0, results:[], drill:drillOnly === true};
   show("scr-quiz"); renderQ();
 }
 function renderQ(){
@@ -397,9 +405,10 @@ async function boot(){
   buildIndex();
   ST = loadState();
   $("ver").textContent = `題庫 ${IDX.bank.length} 題`;
-  $("btnStart").onclick = startRound;
+  $("btnStart").onclick = () => startRound(false);
+  $("btnDrill").onclick = () => startRound(true);
   $("btnNext").onclick = nextQ;
-  $("btnAgain").onclick = startRound;
+  $("btnAgain").onclick = () => startRound(RUN && RUN.drill);
   $("btnHome").onclick = () => { renderHome(); show("scr-home"); };
   $("btnQuit").onclick = () => { if(confirm("放棄本輪？已作答的紀錄會保留。")){ renderHome(); show("scr-home"); } };
   $("btnExport").onclick = doExport;
