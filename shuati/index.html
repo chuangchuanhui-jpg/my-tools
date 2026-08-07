@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>國文刷題</title>
+<style>
+:root{
+  --bg:#f5f6f8; --card:#ffffff; --ink:#1c2430; --sub:#66707e;
+  --line:#e3e7ec; --accent:#2b6cb0; --accent-ink:#ffffff;
+  --ok:#2f855a; --ok-bg:#e8f5ee; --bad:#c53030; --bad-bg:#fdecec;
+  --chip:#eef1f5; --chip-on:#2b6cb0;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#14181e; --card:#1e242c; --ink:#e8ecf1; --sub:#98a2ae;
+    --line:#313a45; --accent:#63a4e0; --accent-ink:#0e1319;
+    --ok:#68c495; --ok-bg:#1c322772; --bad:#f08585; --bad-bg:#3a222272;
+    --chip:#2a323c; --chip-on:#63a4e0;
+  }
+}
+*{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+body{margin:0; background:var(--bg); color:var(--ink);
+  font-family:"PingFang TC","Noto Sans TC","Microsoft JhengHei",sans-serif;
+  font-size:17px; line-height:1.65}
+.wrap{max-width:680px; margin:0 auto; padding:14px 14px 40px}
+header{display:flex; align-items:baseline; gap:10px; padding:6px 2px 12px}
+header h1{font-size:20px; margin:0; letter-spacing:.05em}
+header .sub{color:var(--sub); font-size:13px}
+.card{background:var(--card); border:1px solid var(--line); border-radius:14px;
+  padding:16px; margin-bottom:14px}
+h2{font-size:16px; margin:0 0 10px}
+.chips{display:flex; flex-wrap:wrap; gap:8px}
+.chip{border:1px solid var(--line); background:var(--chip); color:var(--ink);
+  border-radius:999px; padding:7px 14px; font-size:15px; cursor:pointer}
+.chip.on{background:var(--chip-on); border-color:var(--chip-on); color:var(--accent-ink); font-weight:600}
+.chip .n{font-size:12px; opacity:.75; margin-left:4px}
+button.big{display:block; width:100%; padding:14px; margin-top:14px;
+  background:var(--accent); color:var(--accent-ink); border:0; border-radius:12px;
+  font-size:18px; font-weight:700; letter-spacing:.15em; cursor:pointer}
+button.big:disabled{opacity:.45}
+button.ghost{background:none; border:1px solid var(--line); color:var(--sub);
+  border-radius:10px; padding:8px 14px; font-size:14px; cursor:pointer}
+.statrow{display:flex; gap:10px; margin-top:4px}
+.stat{flex:1; text-align:center; background:var(--chip); border-radius:10px; padding:10px 4px}
+.stat b{display:block; font-size:22px}
+.stat span{font-size:12.5px; color:var(--sub)}
+/* quiz */
+.qbar{display:flex; justify-content:space-between; align-items:center;
+  font-size:14px; color:var(--sub); margin-bottom:8px}
+.dots{display:flex; gap:5px}
+.dot{width:9px; height:9px; border-radius:50%; background:var(--line)}
+.dot.now{background:var(--accent)}
+.dot.ok{background:var(--ok)}
+.dot.bad{background:var(--bad)}
+.retag{display:inline-block; font-size:12.5px; background:var(--bad-bg); color:var(--bad);
+  border-radius:6px; padding:2px 8px; margin-bottom:8px}
+.passage{background:var(--chip); border-left:4px solid var(--accent);
+  border-radius:8px; padding:10px 12px; font-size:15.5px; max-height:42vh;
+  overflow-y:auto; margin-bottom:12px; white-space:pre-wrap}
+.stem{font-weight:600; margin-bottom:14px; white-space:pre-wrap}
+.opt{display:flex; gap:10px; align-items:flex-start; width:100%; text-align:left;
+  background:var(--card); border:1.5px solid var(--line); border-radius:12px;
+  padding:11px 12px; margin-bottom:9px; font-size:16.5px; color:var(--ink);
+  cursor:pointer; line-height:1.55}
+.opt .ltr{flex:0 0 26px; height:26px; border-radius:50%; background:var(--chip);
+  display:flex; align-items:center; justify-content:center; font-weight:700; font-size:14px}
+.opt.sel-ok{border-color:var(--ok); background:var(--ok-bg)}
+.opt.sel-bad{border-color:var(--bad); background:var(--bad-bg)}
+.opt.reveal{border-color:var(--ok)}
+.opt:disabled{cursor:default; opacity:.92}
+.feedback{border-radius:12px; padding:12px 14px; margin:6px 0 10px; font-size:15.5px}
+.feedback.ok{background:var(--ok-bg); color:var(--ok)}
+.feedback.bad{background:var(--bad-bg); color:var(--bad)}
+.feedback .expl{color:var(--ink); margin-top:6px; font-size:15px}
+.feedback .meta{color:var(--sub); font-size:12.5px; margin-top:6px}
+.rowbtns{display:flex; gap:10px; align-items:center; justify-content:space-between}
+a.flag{color:var(--sub); font-size:13px; text-decoration:underline; cursor:pointer}
+/* summary */
+.bigscore{font-size:40px; font-weight:800; text-align:center; margin:6px 0}
+.wronglist{font-size:14.5px; color:var(--sub)}
+.wronglist li{margin-bottom:6px}
+.note{font-size:13.5px; color:var(--sub); margin-top:8px}
+.hidden{display:none}
+textarea{width:100%; min-height:70px; border:1px solid var(--line); border-radius:8px;
+  background:var(--chip); color:var(--ink); font-size:12px; padding:8px}
+.danger{color:var(--bad)}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header><h1>國文刷題</h1><span class="sub" id="ver"></span></header>
+
+<!-- ═══ 首頁 ═══ -->
+<div id="scr-home">
+  <div class="card">
+    <h2>選擇範圍</h2>
+    <div class="chips" id="scopeChips"></div>
+    <button class="big" id="btnStart">開始刷題（10 題）</button>
+    <div class="note" id="scopeNote"></div>
+  </div>
+  <div class="card">
+    <h2>我的進度</h2>
+    <div class="statrow">
+      <div class="stat"><b id="stDone">0</b><span>練過題數</span></div>
+      <div class="stat"><b id="stAcc">–</b><span>總答對率</span></div>
+      <div class="stat"><b id="stQueue">0</b><span>待克服考點</span></div>
+    </div>
+    <div class="note" id="queuePreview"></div>
+  </div>
+  <div class="card">
+    <h2>設定與備份</h2>
+    <div style="font-size:15px; margin-bottom:10px">
+      錯題過關條件：
+      <label><input type="radio" name="need" value="1">答對 1 次</label>
+      <label style="margin-left:10px"><input type="radio" name="need" value="2">連續答對 2 次</label>
+    </div>
+    <div class="rowbtns" style="justify-content:flex-start; gap:8px; flex-wrap:wrap">
+      <button class="ghost" id="btnExport">匯出進度</button>
+      <button class="ghost" id="btnImport">匯入進度</button>
+      <button class="ghost danger" id="btnReset">全部重來</button>
+    </div>
+    <div id="backupBox" class="hidden" style="margin-top:10px">
+      <textarea id="backupTa" placeholder="把之前匯出的進度貼在這裡"></textarea>
+      <button class="ghost" id="btnDoImport" style="margin-top:6px">確認匯入</button>
+    </div>
+    <div class="note" id="flaggedNote"></div>
+  </div>
+</div>
+
+<!-- ═══ 作答 ═══ -->
+<div id="scr-quiz" class="hidden">
+  <div class="card">
+    <div class="qbar"><span id="qPos"></span><div class="dots" id="qDots"></div></div>
+    <div id="qRetag"></div>
+    <div id="qPassage"></div>
+    <div class="stem" id="qStem"></div>
+    <div id="qOpts"></div>
+    <div id="qFeedback"></div>
+    <div class="rowbtns">
+      <a class="flag" id="qFlag">這題怪怪的？回報</a>
+      <button class="big" id="btnNext" style="width:auto; margin-top:0; padding:10px 26px" disabled>下一題</button>
+    </div>
+  </div>
+  <button class="ghost" id="btnQuit">◀ 放棄本輪回首頁</button>
+</div>
+
+<!-- ═══ 結算 ═══ -->
+<div id="scr-sum" class="hidden">
+  <div class="card">
+    <h2>本輪結果</h2>
+    <div class="bigscore" id="sumScore"></div>
+    <div id="sumWrong"></div>
+    <div class="note" id="sumNote"></div>
+    <button class="big" id="btnAgain">再來 10 題</button>
+    <button class="ghost" id="btnHome" style="width:100%; margin-top:10px">回首頁</button>
+  </div>
+</div>
+</div>
+
+<script>
+"use strict";
+const LS_KEY = "guowen_shuati_v1";
+const ROUND_N = 10, MAX_REDO_PER_ROUND = 5;
+
+let DB = null;                 // {passages, questions}
+let IDX = null;                // 索引
+let ST = null;                 // 進度狀態
+let RUN = null;                // 本輪狀態
+
+// ── 狀態 ──────────────────────────────────────────
+function freshState(){
+  return {need:1, scope:"ALL", round:0, q:{}, queue:[], mastered:{}, flagged:[], answered:0, correct:0};
+}
+function loadState(){
+  try{
+    const raw = localStorage.getItem(LS_KEY);
+    if(raw){ const s = JSON.parse(raw); if(s && s.q) return Object.assign(freshState(), s); }
+  }catch(e){}
+  return freshState();
+}
+function saveState(){ localStorage.setItem(LS_KEY, JSON.stringify(ST)); }
+
+// ── 資料索引 ──────────────────────────────────────
+function buildIndex(){
+  IDX = {byK:{}, variants:{}, suppsByPg:{}, bank:[], bySub:{}};
+  for(const q of DB.questions){
+    IDX.byK[q.k] = q;
+    if(q.tag === "variant"){ (IDX.variants[q.variant_of] ||= []).push(q); }
+    else if(q.tag === "supp"){ (IDX.suppsByPg[q.pg] ||= []).push(q); }
+    else { IDX.bank.push(q); (IDX.bySub[q.sub] ||= []).push(q); }
+  }
+}
+function inScope(q, scope){
+  if(scope === "ALL") return true;
+  if(scope === "T1" || scope === "T2") return q.big === scope;
+  return q.sub === scope;
+}
+function seen(k){ return !!ST.q[k]; }
+function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
+
+// ── 出題：錯題考點優先，其餘抽新題 ────────────────
+// 給一個待克服考點挑「這輪呈現哪一題」：變形題 → 同選文補充題 → 同考點兄弟題 → 原題重問
+function pickForEntry(e){
+  const orig = IDX.byK[e.k];
+  if(!orig) return null;
+  const used = new Set(e.used || []);
+  const fresh = arr => shuffle((arr||[]).filter(q => !used.has(q.k) && !seen(q.k)))[0];
+  let q = fresh(IDX.variants[e.k]);
+  if(!q && orig.pg) q = fresh(IDX.suppsByPg[orig.pg]);
+  if(!q){
+    let sibs = (IDX.bySub[orig.sub]||[]).filter(s => s.k !== e.k);
+    if(orig.skill){ const same = sibs.filter(s => s.skill === orig.skill); if(same.length) sibs = same; }
+    q = fresh(sibs);
+  }
+  if(!q) q = orig;   // 沒新材料就原題重問
+  return q;
+}
+function composeRound(scope){
+  const items = [];
+  const usedK = new Set();
+  const dueEntries = ST.queue.slice(0, MAX_REDO_PER_ROUND);
+  for(const e of dueEntries){
+    const q = pickForEntry(e);
+    if(q && !usedK.has(q.k)){ items.push({q, entryK:e.k}); usedK.add(q.k); }
+  }
+  let pool = IDX.bank.filter(q => inScope(q, scope) && !seen(q.k) && !usedK.has(q.k)
+                                  && !ST.queue.some(e => e.k === q.k));
+  shuffle(pool);
+  for(const q of pool){ if(items.length >= ROUND_N) break; items.push({q, entryK:null}); usedK.add(q.k); }
+  if(items.length < ROUND_N){        // 新題抽完了 → 拿最久沒看的舊題複習
+    let old = IDX.bank.filter(q => inScope(q, scope) && !usedK.has(q.k))
+      .sort((a,b) => (ST.q[a.k]?.last||0) - (ST.q[b.k]?.last||0));
+    for(const q of old){ if(items.length >= ROUND_N) break; items.push({q, entryK:null, review:true}); usedK.add(q.k); }
+  }
+  return shuffle(items);
+}
+
+// ── 作答與判定 ────────────────────────────────────
+function grade(item, choice){
+  const q = item.q, ok = (choice === q.ans);
+  const rec = (ST.q[q.k] ||= {r:0, w:0, last:0});
+  rec.last = ++ST.answered; ok ? rec.r++ : rec.w++;
+  if(ok) ST.correct++;
+  const entry = item.entryK ? ST.queue.find(e => e.k === item.entryK) : null;
+  if(entry){
+    (entry.used ||= []).push(q.k);
+    if(ok){
+      entry.streak = (entry.streak||0) + 1;
+      if(entry.streak >= ST.need){
+        ST.queue = ST.queue.filter(e => e !== entry);
+        ST.mastered[entry.k] = ST.round;
+      }
+    } else entry.streak = 0;
+  } else if(!ok){
+    const key = q.tag === "bank" ? q.k : (q.variant_of || q.k);
+    if(!ST.queue.some(e => e.k === key)){
+      ST.queue.push({k:key, streak:0, used:[q.k], added:ST.round});
+      delete ST.mastered[key];
+    }
+  }
+  saveState();
+  return ok;
+}
+
+// ── 畫面 ──────────────────────────────────────────
+const $ = id => document.getElementById(id);
+function show(id){ for(const s of ["scr-home","scr-quiz","scr-sum"]) $(s).classList.toggle("hidden", s!==id); window.scrollTo(0,0); }
+function esc(t){ const d=document.createElement("div"); d.textContent=t; return d.innerHTML; }
+
+const SCOPES = [["ALL","全部"],["T1","形音義"],["T2","閱讀"],
+  ["字音","字音"],["字形","字形"],["字義","字義"],["詞語運用","詞語"],["成語俗諺","成語"],["標點符號","標點"],
+  ["白話閱讀","白話"],["文言閱讀","文言"],["寫作手法","寫作手法"]];
+
+function renderHome(){
+  const box = $("scopeChips"); box.innerHTML = "";
+  for(const [val,label] of SCOPES){
+    const n = IDX.bank.filter(q => inScope(q,val)).length;
+    if(!n) continue;
+    const c = document.createElement("button");
+    c.className = "chip" + (ST.scope===val ? " on" : "");
+    c.innerHTML = esc(label) + `<span class="n">${n}</span>`;
+    c.onclick = () => { ST.scope = val; saveState(); renderHome(); };
+    box.appendChild(c);
+  }
+  const newLeft = IDX.bank.filter(q => inScope(q,ST.scope) && !seen(q.k)).length;
+  $("scopeNote").textContent = `此範圍還有 ${newLeft} 題沒做過。答錯的題目，下一輪會出現它的變形或同考點題，直到你把它答對為止。`;
+  $("stDone").textContent = Object.keys(ST.q).length;
+  $("stAcc").textContent = ST.answered ? Math.round(100*ST.correct/ST.answered) + "%" : "–";
+  $("stQueue").textContent = ST.queue.length;
+  $("queuePreview").textContent = ST.queue.length
+    ? "待克服：" + ST.queue.slice(0,3).map(e => (IDX.byK[e.k]?.stem||"").slice(0,18)+"…").join("／") + (ST.queue.length>3 ? ` 等 ${ST.queue.length} 個` : "")
+    : "目前沒有待克服的錯題，讚！";
+  document.querySelectorAll("input[name=need]").forEach(r => {
+    r.checked = (+r.value === ST.need);
+    r.onchange = () => { ST.need = +r.value; saveState(); };
+  });
+  $("flaggedNote").textContent = ST.flagged.length ? `已回報 ${ST.flagged.length} 題有問題（老師會處理）` : "";
+}
+
+function startRound(){
+  const items = composeRound(ST.scope);
+  if(!items.length){ alert("這個範圍沒有可出的題目"); return; }
+  RUN = {items, i:0, results:[]};
+  show("scr-quiz"); renderQ();
+}
+function renderQ(){
+  const item = RUN.items[RUN.i], q = item.q;
+  $("qPos").textContent = `第 ${RUN.i+1} / ${RUN.items.length} 題 · ${q.sub}`;
+  $("qDots").innerHTML = RUN.items.map((_,i) =>
+    `<div class="dot ${i===RUN.i ? "now" : (RUN.results[i]===true ? "ok" : RUN.results[i]===false ? "bad" : "")}"></div>`).join("");
+  $("qRetag").innerHTML = item.entryK ? `<span class="retag">上次錯的考點，再挑戰！</span>` : (item.review ? `<span class="retag" style="background:var(--chip);color:var(--sub)">複習題</span>` : "");
+  $("qPassage").innerHTML = q.pg ? `<div class="passage">${esc(DB.passages[q.pg]||"")}</div>` : "";
+  $("qStem").textContent = q.stem;
+  const box = $("qOpts"); box.innerHTML = "";
+  "ABCD".split("").forEach((L,i) => {
+    const b = document.createElement("button");
+    b.className = "opt";
+    b.innerHTML = `<span class="ltr">${L}</span><span>${esc(q.opts[i])}</span>`;
+    b.onclick = () => answer(item, L, b);
+    box.appendChild(b);
+  });
+  $("qFeedback").innerHTML = "";
+  $("btnNext").disabled = true;
+  $("btnNext").textContent = (RUN.i === RUN.items.length-1) ? "看結果" : "下一題";
+  $("qFlag").onclick = () => {
+    if(!ST.flagged.includes(q.k)) ST.flagged.push(q.k);
+    saveState(); $("qFlag").textContent = "已回報 ✓";
+  };
+  $("qFlag").textContent = "這題怪怪的？回報";
+}
+function answer(item, L, btn){
+  if(RUN.results[RUN.i] !== undefined) return;
+  const q = item.q, ok = grade(item, L);
+  RUN.results[RUN.i] = ok;
+  document.querySelectorAll("#qOpts .opt").forEach((b,i) => {
+    b.disabled = true;
+    const letter = "ABCD"[i];
+    if(letter === q.ans) b.classList.add(ok && letter===L ? "sel-ok" : "reveal");
+    if(letter === L && !ok) b.classList.add("sel-bad");
+  });
+  const srcNote = q.ansSrc === "ai" ? "答案由 AI 解題（雙重驗證一致）" : "官方參考答案";
+  $("qFeedback").innerHTML =
+    `<div class="feedback ${ok ? "ok" : "bad"}"><b>${ok ? "答對了！" : "答錯了，正解是 (" + q.ans + ")"}</b>` +
+    (q.expl ? `<div class="expl">${esc(q.expl)}</div>` : "") +
+    (!ok && !item.entryK ? `<div class="meta">這個考點已加入待克服清單，下一輪會再出變形題。</div>` : "") +
+    (item.entryK && ok ? `<div class="meta">${ST.queue.some(e=>e.k===item.entryK) ? "很好！再答對 "+(ST.need-(ST.queue.find(e=>e.k===item.entryK).streak))+" 次就過關。" : "這個考點過關，從清單移除！"}</div>` : "") +
+    `<div class="meta">${srcNote} · 出處：${esc(q.src||"題庫")}</div></div>`;
+  $("btnNext").disabled = false;
+  renderQDots();
+}
+function renderQDots(){
+  $("qDots").innerHTML = RUN.items.map((_,i) =>
+    `<div class="dot ${i===RUN.i ? "now" : (RUN.results[i]===true ? "ok" : RUN.results[i]===false ? "bad" : "")}"></div>`).join("");
+}
+function nextQ(){
+  if(RUN.i < RUN.items.length-1){ RUN.i++; renderQ(); }
+  else finishRound();
+}
+function finishRound(){
+  ST.round++; saveState();
+  const right = RUN.results.filter(Boolean).length;
+  $("sumScore").textContent = `${right} / ${RUN.items.length}`;
+  const wrong = RUN.items.filter((it,i) => RUN.results[i] === false);
+  $("sumWrong").innerHTML = wrong.length
+    ? `<div class="wronglist">答錯的題：<ul>` + wrong.map(it =>
+        `<li>${esc(it.q.stem.slice(0,30))}…（正解 ${it.q.ans}）</li>`).join("") + `</ul></div>`
+    : `<div class="wronglist">全對！</div>`;
+  $("sumNote").textContent = ST.queue.length
+    ? `待克服考點還有 ${ST.queue.length} 個，下一輪會優先出它們的變形題。`
+    : `沒有待克服的考點了，下一輪全是新題。`;
+  show("scr-sum");
+}
+
+// ── 備份 ──────────────────────────────────────────
+function doExport(){
+  const ta = $("backupTa");
+  $("backupBox").classList.remove("hidden");
+  ta.value = JSON.stringify(ST);
+  ta.select(); try{ document.execCommand("copy"); }catch(e){}
+  alert("進度已放到下方文字框（已嘗試複製）。存到記事本，之後可匯入。");
+}
+function doImportBox(){ $("backupBox").classList.remove("hidden"); $("backupTa").value=""; $("backupTa").focus(); }
+function doImport(){
+  try{
+    const s = JSON.parse($("backupTa").value);
+    if(!s || typeof s.q !== "object") throw 0;
+    ST = Object.assign(freshState(), s); saveState(); renderHome();
+    alert("匯入成功！");
+  }catch(e){ alert("匯入失敗：內容不是有效的進度資料"); }
+}
+
+// ── 啟動 ──────────────────────────────────────────
+async function boot(){
+  const res = await fetch("questions.json", {cache:"no-store"});
+  DB = await res.json();
+  buildIndex();
+  ST = loadState();
+  $("ver").textContent = `題庫 ${IDX.bank.length} 題`;
+  $("btnStart").onclick = startRound;
+  $("btnNext").onclick = nextQ;
+  $("btnAgain").onclick = startRound;
+  $("btnHome").onclick = () => { renderHome(); show("scr-home"); };
+  $("btnQuit").onclick = () => { if(confirm("放棄本輪？已作答的紀錄會保留。")){ renderHome(); show("scr-home"); } };
+  $("btnExport").onclick = doExport;
+  $("btnImport").onclick = doImportBox;
+  $("btnDoImport").onclick = doImport;
+  $("btnReset").onclick = () => { if(confirm("確定把所有進度歸零？")){ ST = freshState(); saveState(); renderHome(); } };
+  renderHome(); show("scr-home");
+}
+boot().catch(e => { document.body.innerHTML = "<p style='padding:30px'>題庫載入失敗，請重新整理。<br>" + e + "</p>"; });
+</script>
+</body>
+</html>
