@@ -8,15 +8,16 @@
 :root{
   --bg:#f5f6f8; --card:#ffffff; --ink:#1c2430; --sub:#66707e;
   --line:#e3e7ec; --accent:#2b6cb0; --accent-ink:#ffffff;
-  --ok:#2f855a; --ok-bg:#e8f5ee; --bad:#c53030; --bad-bg:#fdecec;
-  --chip:#eef1f5; --chip-on:#2b6cb0;
+  --ok:#2f855a; --ok-bg:#d7efe1; --bad:#c53030; --bad-bg:#fbdcdc;
+  --chip:#eef1f5; --chip-on:#2b6cb0; --gold:#b7791f;
 }
 @media (prefers-color-scheme: dark){
   :root{
     --bg:#14181e; --card:#1e242c; --ink:#e8ecf1; --sub:#98a2ae;
     --line:#313a45; --accent:#63a4e0; --accent-ink:#0e1319;
-    --ok:#68c495; --ok-bg:#1c322772; --bad:#f08585; --bad-bg:#3a222272;
-    --chip:#2a323c; --chip-on:#63a4e0;
+    /* 舊值 #1c322772 / #3a222272 透明度太低，答對答錯的底色幾乎看不出來 */
+    --ok:#68c495; --ok-bg:#1f4433; --bad:#f08585; --bad-bg:#4a2626;
+    --chip:#2a323c; --chip-on:#63a4e0; --gold:#e0b050;
   }
 }
 *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
@@ -26,7 +27,7 @@ body{margin:0; background:var(--bg); color:var(--ink);
 .wrap{max-width:680px; margin:0 auto; padding:14px 14px 40px}
 header{display:flex; align-items:baseline; gap:10px; padding:6px 2px 12px}
 header h1{font-size:20px; margin:0; letter-spacing:.05em}
-header .sub{color:var(--sub); font-size:13px}
+header .sub{color:var(--sub); font-size:13px; margin-left:auto}
 .card{background:var(--card); border:1px solid var(--line); border-radius:14px;
   padding:16px; margin-bottom:14px}
 h2{font-size:16px; margin:0 0 10px}
@@ -34,30 +35,60 @@ h2{font-size:16px; margin:0 0 10px}
 .chip{border:1px solid var(--line); background:var(--chip); color:var(--ink);
   border-radius:999px; padding:7px 14px; font-size:15px; cursor:pointer}
 .chip.on{background:var(--chip-on); border-color:var(--chip-on); color:var(--accent-ink); font-weight:600}
-.chip .n{font-size:12px; opacity:.75; margin-left:4px}
 button.big{display:block; width:100%; padding:14px; margin-top:14px;
   background:var(--accent); color:var(--accent-ink); border:0; border-radius:12px;
-  font-size:18px; font-weight:700; letter-spacing:.15em; cursor:pointer}
+  font-size:18px; font-weight:700; letter-spacing:.12em; cursor:pointer}
 button.big:disabled{opacity:.45}
+button.big.demote{background:var(--chip); color:var(--ink); font-weight:600}
 button.ghost{background:none; border:1px solid var(--line); color:var(--sub);
   border-radius:10px; padding:8px 14px; font-size:14px; cursor:pointer}
+.note{font-size:13.5px; color:var(--sub); margin-top:8px}
+.hidden{display:none}
+.danger{color:var(--bad)}
+
+/* ── 首頁：本週進度 ───────────────────────────── */
+.wkhead{display:flex; align-items:center; justify-content:space-between; gap:10px}
+.wkhead .n{font-size:26px; font-weight:800}
+.bar{height:10px; border-radius:999px; background:var(--chip); overflow:hidden; margin:12px 0 6px}
+.bar i{display:block; height:100%; background:var(--ok); border-radius:999px;
+  width:0; transition:width .6s cubic-bezier(.2,.8,.3,1)}
+.seedgrid{display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:7px; margin-top:12px}
+.seed{display:flex; align-items:center; gap:7px; background:var(--chip);
+  border-radius:9px; padding:7px 10px; font-size:13px; color:var(--sub)}
+.seed b{flex:0 0 20px; height:20px; border-radius:50%; background:var(--line); color:var(--ink);
+  display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700}
+.seed.done{background:var(--ok-bg); color:var(--ok)}
+.seed.done b{background:var(--ok); color:#fff}
+.seed .t{flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
 .statrow{display:flex; gap:10px; margin-top:4px}
 .stat{flex:1; text-align:center; background:var(--chip); border-radius:10px; padding:10px 4px}
 .stat b{display:block; font-size:22px}
 .stat span{font-size:12.5px; color:var(--sub)}
-/* quiz */
+
+/* ── 作答 ─────────────────────────────────────── */
 .qbar{display:flex; justify-content:space-between; align-items:center;
-  font-size:14px; color:var(--sub); margin-bottom:8px}
-.dots{display:flex; gap:5px}
-.dot{width:9px; height:9px; border-radius:50%; background:var(--line)}
-.dot.now{background:var(--accent)}
+  font-size:14px; color:var(--sub); margin-bottom:10px}
+.dots{display:flex; gap:6px}
+.dot{width:12px; height:12px; border-radius:50%; background:var(--line)}
+.dot.now{background:var(--accent); box-shadow:0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent)}
 .dot.ok{background:var(--ok)}
 .dot.bad{background:var(--bad)}
 .retag{display:inline-block; font-size:12.5px; background:var(--bad-bg); color:var(--bad);
   border-radius:6px; padding:2px 8px; margin-bottom:8px}
+.retag.g{background:var(--chip); color:var(--sub)}
+
+/* 選文：預設 32vh，底部漸層暗示還有內容，可展開全文 */
+.pgwrap{position:relative; margin-bottom:12px}
 .passage{background:var(--chip); border-left:4px solid var(--accent);
-  border-radius:8px; padding:10px 12px; font-size:15.5px; max-height:42vh;
-  overflow-y:auto; margin-bottom:12px; white-space:pre-wrap}
+  border-radius:8px; padding:10px 12px; font-size:15.5px; line-height:1.75;
+  max-height:32vh; overflow-y:auto; white-space:pre-wrap}
+.pgwrap.open .passage{max-height:none}
+.pgwrap .fade{position:absolute; left:4px; right:0; bottom:0; height:44px; border-radius:0 0 8px 8px;
+  background:linear-gradient(to bottom, transparent, var(--chip) 78%); pointer-events:none}
+.pgwrap.open .fade{display:none}
+.pgtog{display:block; width:100%; margin-top:6px; background:none; border:1px solid var(--line);
+  color:var(--accent); border-radius:8px; padding:6px; font-size:13.5px; cursor:pointer}
+
 .stem{font-weight:600; margin-bottom:14px; white-space:pre-wrap}
 .opt{display:flex; gap:10px; align-items:flex-start; width:100%; text-align:left;
   background:var(--card); border:1.5px solid var(--line); border-radius:12px;
@@ -65,10 +96,12 @@ button.ghost{background:none; border:1px solid var(--line); color:var(--sub);
   cursor:pointer; line-height:1.55}
 .opt .ltr{flex:0 0 26px; height:26px; border-radius:50%; background:var(--chip);
   display:flex; align-items:center; justify-content:center; font-weight:700; font-size:14px}
+.opt .otxt{flex:1}
+.opt .mk{flex:0 0 22px; align-self:center; display:flex; align-items:center; justify-content:center}
 .opt.sel-ok{border-color:var(--ok); background:var(--ok-bg)}
 .opt.sel-bad{border-color:var(--bad); background:var(--bad-bg)}
 .opt.reveal{border-color:var(--ok)}
-.opt:disabled{cursor:default; opacity:.92}
+.opt:disabled{cursor:default}
 .feedback{border-radius:12px; padding:12px 14px; margin:6px 0 10px; font-size:15.5px}
 .feedback.ok{background:var(--ok-bg); color:var(--ok)}
 .feedback.bad{background:var(--bad-bg); color:var(--bad)}
@@ -76,20 +109,26 @@ button.ghost{background:none; border:1px solid var(--line); color:var(--sub);
 .feedback .meta{color:var(--sub); font-size:12.5px; margin-top:6px}
 .rowbtns{display:flex; gap:10px; align-items:center; justify-content:space-between}
 a.flag{color:var(--sub); font-size:13px; text-decoration:underline; cursor:pointer}
-/* summary */
+
+/* ── 結算 ─────────────────────────────────────── */
 .bigscore{font-size:40px; font-weight:800; text-align:center; margin:6px 0}
 .wronglist{font-size:14.5px; color:var(--sub)}
 .wronglist li{margin-bottom:6px}
-.note{font-size:13.5px; color:var(--sub); margin-top:8px}
-.hidden{display:none}
-/* ── 動畫 ─────────────────────────────────────────
-   原則：每個效果 ≤500ms，且不擋「下一題」。刷題節奏優先。 */
+#sumDots{justify-content:center; gap:8px; margin:2px 0}
+#sumDots .dot{width:14px; height:14px}
+
+/* ── 同步狀態 ─────────────────────────────────── */
+.syncdot{display:inline-block; width:8px; height:8px; border-radius:50%;
+  background:var(--line); margin-right:5px; vertical-align:middle}
+.syncdot.on{background:var(--ok)} .syncdot.err{background:var(--bad)}
+
+/* ── 動畫（≤500ms，不擋「下一題」）───────────── */
 @keyframes pop{0%{transform:scale(1)} 45%{transform:scale(1.035)} 100%{transform:scale(1)}}
 @keyframes shake{0%,100%{transform:translateX(0)} 18%{transform:translateX(-7px)}
   36%{transform:translateX(6px)} 54%{transform:translateX(-4px)} 72%{transform:translateX(3px)}}
 @keyframes fadeUp{from{opacity:0; transform:translateY(7px)} to{opacity:1; transform:translateY(0)}}
 @keyframes drawMark{to{stroke-dashoffset:0}}
-@keyframes dotPop{0%{transform:scale(1)} 50%{transform:scale(2)} 100%{transform:scale(1)}}
+@keyframes dotPop{0%{transform:scale(1)} 50%{transform:scale(1.8)} 100%{transform:scale(1)}}
 @keyframes toastIn{
   0%{opacity:0; transform:translate(-50%,16px) scale(.8)}
   16%{opacity:1; transform:translate(-50%,0) scale(1.08)}
@@ -98,11 +137,7 @@ a.flag{color:var(--sub); font-size:13px; text-decoration:underline; cursor:point
   100%{opacity:0; transform:translate(-50%,-12px) scale(1)}}
 @keyframes badgeIn{0%{opacity:0; transform:scale(.4)} 60%{opacity:1; transform:scale(1.14)}
   100%{opacity:1; transform:scale(1)}}
-
-.opt .otxt{flex:1}
-.opt .mk{flex:0 0 22px; align-self:center; display:flex; align-items:center; justify-content:center}
-.mark{width:21px; height:21px; fill:none; stroke-width:2.7;
-  stroke-linecap:round; stroke-linejoin:round}
+.mark{width:21px; height:21px; fill:none; stroke-width:2.7; stroke-linecap:round; stroke-linejoin:round}
 .mark path{stroke-dasharray:1; stroke-dashoffset:1; animation:drawMark .3s .07s ease-out forwards}
 .opt.sel-ok{animation:pop .34s ease-out}
 .opt.sel-bad{animation:shake .4s ease-out}
@@ -111,6 +146,7 @@ a.flag{color:var(--sub); font-size:13px; text-decoration:underline; cursor:point
 .opt.sel-bad .mark{stroke:var(--bad)}
 .feedback{animation:fadeUp .28s ease-out}
 .dot.just{animation:dotPop .36s ease-out}
+.seed.justdone{animation:badgeIn .5s cubic-bezier(.2,1.5,.4,1) both}
 #toast{position:fixed; left:50%; top:15%; z-index:60; pointer-events:none;
   background:var(--accent); color:var(--accent-ink); font-weight:800; font-size:17px;
   letter-spacing:.06em; padding:9px 20px; border-radius:999px; white-space:nowrap;
@@ -121,79 +157,70 @@ a.flag{color:var(--sub); font-size:13px; text-decoration:underline; cursor:point
   padding:6px 15px; border-radius:999px;
   animation:badgeIn .48s cubic-bezier(.2,1.5,.4,1) both}
 #confetti{position:fixed; inset:0; z-index:55; pointer-events:none}
-/* 模擬考：作答中只標「已選」，不透露對錯 */
-.opt.picked{border-color:var(--accent); background:var(--chip)}
-.opt.picked .ltr{background:var(--accent); color:var(--accent-ink)}
-.dot.picked{background:var(--sub)}
-#qTimer{font-variant-numeric:tabular-nums; font-weight:700; color:var(--ink)}
-#sumDots{justify-content:center; gap:7px; margin:2px 0 2px}
-#sumDots .dot{width:13px; height:13px}
-
 @media (prefers-reduced-motion: reduce){
   *,*::before,*::after{animation-duration:.01ms !important;
     animation-iteration-count:1 !important; transition-duration:.01ms !important}
-  /* 提示仍要看得到，只是不動 */
   #toast{animation:none !important; opacity:1; transform:translate(-50%,0)}
   .clearbadge{animation:none !important; opacity:1; transform:none}
   .mark path{animation:none !important; stroke-dashoffset:0}
 }
-textarea{width:100%; min-height:70px; border:1px solid var(--line); border-radius:8px;
-  background:var(--chip); color:var(--ink); font-size:12px; padding:8px}
-.danger{color:var(--bad)}
 </style>
 </head>
 <body>
 <div class="wrap">
-<header><h1>國文刷題</h1><span class="sub" id="ver"></span></header>
+<header><h1>國文刷題</h1><span class="sub" id="who"></span></header>
+
+<!-- ═══ 選學生（第一次進來才出現）═══ -->
+<div id="scr-pick">
+  <div class="card">
+    <h2>你是誰？</h2>
+    <div class="chips" id="pickChips"></div>
+    <div class="note">選一次就好，之後這台裝置會記住。老師端看得到兩個人的進度對照。</div>
+  </div>
+</div>
 
 <!-- ═══ 首頁 ═══ -->
-<div id="scr-home">
+<div id="scr-home" class="hidden">
   <div class="card">
-    <h2>作答模式</h2>
-    <div class="chips" id="modeChips"></div>
-    <div class="note" id="modeNote"></div>
+    <div class="wkhead">
+      <div><span class="n" id="wkNo"></span><span style="color:var(--sub)"> 週</span></div>
+      <button class="ghost" id="btnWeek">換週次</button>
+    </div>
+    <div class="bar"><i id="wkBar"></i></div>
+    <div class="note" id="wkNote"></div>
+    <div class="seedgrid" id="seedGrid"></div>
+    <button class="big" id="btnGo"></button>
+    <div class="note" id="goNote"></div>
   </div>
   <div class="card">
-    <h2>選擇範圍</h2>
-    <div class="chips" id="scopeChips"></div>
-    <button class="big" id="btnStart">開始刷題（10 題）</button>
-    <button class="big" id="btnDrill" style="background:var(--bad); margin-top:9px">
-      只練待克服的錯題</button>
-    <div class="note" id="scopeNote"></div>
-  </div>
-  <div class="card">
-    <h2>我的進度</h2>
+    <h2>本週狀況</h2>
     <div class="statrow">
-      <div class="stat"><b id="stDone">0</b><span>練過題數</span></div>
-      <div class="stat"><b id="stAcc">–</b><span>總答對率</span></div>
-      <div class="stat"><b id="stQueue">0</b><span>待克服考點</span></div>
+      <div class="stat"><b id="stRound">0</b><span>已練輪數</span></div>
+      <div class="stat"><b id="stDone">0</b><span>攻克考點</span></div>
+      <div class="stat"><b id="stAcc">–</b><span>本週答對率</span></div>
     </div>
-    <div class="note" id="queuePreview"></div>
+    <div class="note" id="syncNote"></div>
+    <div class="rowbtns" style="justify-content:flex-start; gap:8px; margin-top:10px">
+      <button class="ghost" id="btnSwitch">換人</button>
+      <button class="ghost danger" id="btnReset">本週重來</button>
+    </div>
   </div>
+</div>
+
+<!-- ═══ 換週次 ═══ -->
+<div id="scr-week" class="hidden">
   <div class="card">
-    <h2>設定與備份</h2>
-    <div style="font-size:15px; margin-bottom:10px">
-      錯題過關條件：
-      <label><input type="radio" name="need" value="1">答對 1 次</label>
-      <label style="margin-left:10px"><input type="radio" name="need" value="2">連續答對 2 次</label>
-    </div>
-    <div class="rowbtns" style="justify-content:flex-start; gap:8px; flex-wrap:wrap">
-      <button class="ghost" id="btnExport">匯出進度</button>
-      <button class="ghost" id="btnImport">匯入進度</button>
-      <button class="ghost danger" id="btnReset">全部重來</button>
-    </div>
-    <div id="backupBox" class="hidden" style="margin-top:10px">
-      <textarea id="backupTa" placeholder="把之前匯出的進度貼在這裡"></textarea>
-      <button class="ghost" id="btnDoImport" style="margin-top:6px">確認匯入</button>
-    </div>
-    <div class="note" id="flaggedNote"></div>
+    <h2>選週次</h2>
+    <div class="chips" id="weekChips"></div>
+    <div class="note">每週固定 10 題（字音1 字形1 白話3 文言3 成語1 詞語1）。兩位學生的第 N 週是同一組題，才能對照。</div>
+    <button class="big demote" id="btnWeekBack">回首頁</button>
   </div>
 </div>
 
 <!-- ═══ 作答 ═══ -->
 <div id="scr-quiz" class="hidden">
   <div class="card">
-    <div class="qbar"><span id="qPos"></span><span id="qTimer" class="hidden"></span><div class="dots" id="qDots"></div></div>
+    <div class="qbar"><span id="qPos"></span><div class="dots" id="qDots"></div></div>
     <div id="qRetag"></div>
     <div id="qPassage"></div>
     <div class="stem" id="qStem"></div>
@@ -201,166 +228,181 @@ textarea{width:100%; min-height:70px; border:1px solid var(--line); border-radiu
     <div id="qFeedback"></div>
     <div class="rowbtns">
       <a class="flag" id="qFlag">這題怪怪的？回報</a>
-      <span style="display:flex; gap:8px; align-items:center">
-        <button class="ghost hidden" id="btnPrev">◀ 上一題</button>
-        <button class="big" id="btnNext" style="width:auto; margin-top:0; padding:10px 26px" disabled>下一題</button>
-      </span>
+      <button class="big" id="btnNext" style="width:auto; margin-top:0; padding:10px 26px" disabled>下一題</button>
     </div>
   </div>
-  <button class="ghost" id="btnQuit">◀ 放棄本輪回首頁</button>
+  <button class="ghost" id="btnQuit">◀ 中斷本輪回首頁</button>
 </div>
 
 <!-- ═══ 結算 ═══ -->
 <div id="scr-sum" class="hidden">
   <div class="card">
-    <h2>本輪結果</h2>
+    <h2 id="sumTitle">本輪結果</h2>
     <div class="dots" id="sumDots"></div>
     <div class="bigscore" id="sumScore"></div>
+    <div id="sumCleared"></div>
     <div id="sumWrong"></div>
     <div class="note" id="sumNote"></div>
-    <button class="big hidden" id="btnReview">逐題檢討</button>
-    <button class="big" id="btnAgain">再來 10 題</button>
-    <button class="ghost" id="btnHome" style="width:100%; margin-top:10px">回首頁</button>
+    <button class="big" id="btnAgain">再練一輪</button>
+    <button class="big demote" id="btnHome">回首頁</button>
   </div>
 </div>
 </div>
 
 <script>
 "use strict";
-const LS_KEY = "guowen_shuati_v1";
-const ROUND_N = 10, MAX_REDO_PER_ROUND = 5;
+/* ══════════════════════════════════════════════════════════════
+   週次刷題（課堂用）
 
-let DB = null;                 // {passages, questions}
-let IDX = null;                // 索引
-let ST = null;                 // 進度狀態
-let RUN = null;                // 本輪狀態
+   模型：一週 ＝ 固定 10 個 seed 考點。
+     第 1 輪：做這 10 題。
+     第 2 輪起：**不補新題**，10 題全部從「還沒攻克的 seed」衍生
+                （變形題 → 同選文補充題 → 同考點兄弟題 → 原題重問）。
+     攻克 ＝ 連續答對 NEED 次（不同輪、不同題型都算）。
+     10 個 seed 全攻克 ＝ 本週完成。
 
-// ── 狀態 ──────────────────────────────────────────
-function freshState(){
-  return {need:1, scope:"ALL", mode:"practice", round:0, q:{}, queue:[], mastered:{}, flagged:[], answered:0, correct:0};
+   兩位學生各自裝置，進度存各自 localStorage，另外即時同步到 GAS 給老師端對照。
+   ══════════════════════════════════════════════════════════════ */
+
+const LS_KEY   = "guowen_week_v1";
+const ROUND_N  = 10;   // 每輪題數
+const NEED     = 2;    // 攻克門檻：連續答對 2 次（使用者 2026-08-07 定）
+const MAX_PER_SEED = 3;
+// ↑ 未攻克的 seed 很少時（例如只剩 1 個），不要硬湊 10 題全打同一個考點，
+//   那會變成折磨。每個 seed 一輪最多出 3 題，所以剩 1 個時該輪就是 3 題。
+
+// 同步網址與學生名單放在 config.json（不是 .js）。
+// ⚠️ 一定要用 fetch + cache:"no-store" 讀：<script src="config.js"> 會被瀏覽器快取，
+//    改了名字或貼了同步網址卻「看起來沒生效」，就是這個原因。
+// 沒有這個檔或 SYNC_URL 留空 ⇒ 單機模式，作答完全不受影響。
+let SYNC_URL = "";
+let STUDENTS = [["A", "學生一"], ["B", "學生二"]];
+async function loadConfig(){
+  try{
+    const c = await fetch("config.json", {cache:"no-store"}).then(r => r.json());
+    SYNC_URL = (c.SYNC_URL || "").trim();
+    if(Array.isArray(c.STUDENTS) && c.STUDENTS.length >= 2) STUDENTS = c.STUDENTS;
+  }catch(e){ /* 沒有 config.json 就用預設，單機模式 */ }
+}
+
+let DB = null, WK = null, IDX = null, ST = null, RUN = null;
+
+/* ── 狀態 ────────────────────────────────────── */
+function freshState(sid, name){
+  return {sid, name, week:1, weeks:{}, flagged:[]};
+}
+function freshWeek(){ return {round:0, seeds:{}, answered:0, correct:0}; }
+function wk(){                                   // 目前週次的狀態，缺就開一份
+  const w = String(ST.week);
+  if(!ST.weeks[w]) ST.weeks[w] = freshWeek();
+  const s = ST.weeks[w];
+  for(const k of seedKs()) if(!s.seeds[k]) s.seeds[k] = {streak:0, used:[], done:false, tries:0, wrong:0};
+  return s;
+}
+function seedKs(){
+  const w = WK.weeks.find(x => x.week === ST.week);
+  return w ? w.ks : [];
 }
 function loadState(){
   try{
-    const raw = localStorage.getItem(LS_KEY);
-    if(raw){ const s = JSON.parse(raw); if(s && s.q) return Object.assign(freshState(), s); }
+    const s = JSON.parse(localStorage.getItem(LS_KEY));
+    if(s && s.sid && s.weeks) return Object.assign(freshState(s.sid, s.name), s);
   }catch(e){}
-  return freshState();
+  return null;
 }
-function saveState(){ localStorage.setItem(LS_KEY, JSON.stringify(ST)); }
+function saveState(){ localStorage.setItem(LS_KEY, JSON.stringify(ST)); sync(); }
 
-// ── 資料索引 ──────────────────────────────────────
+/* ── 索引 ────────────────────────────────────── */
 function buildIndex(){
-  IDX = {byK:{}, variants:{}, suppsByPg:{}, bank:[], bySub:{}, byPoint:{}};
+  IDX = {byK:{}, variants:{}, suppsByPg:{}, bank:[], bySub:{}};
   for(const q of DB.questions){
     IDX.byK[q.k] = q;
-    // point＝考點（「屢／履同音」這種顆粒），比 sub 細；同考點的題才真的能互相替代
-    if(q.point) (IDX.byPoint[q.point] ||= []).push(q);
     if(q.tag === "variant"){ (IDX.variants[q.variant_of] ||= []).push(q); }
     else if(q.tag === "supp"){ (IDX.suppsByPg[q.pg] ||= []).push(q); }
     else { IDX.bank.push(q); (IDX.bySub[q.sub] ||= []).push(q); }
   }
 }
-function inScope(q, scope){
-  if(scope === "ALL") return true;
-  if(scope === "T1" || scope === "T2") return q.big === scope;
-  return q.sub === scope;
-}
-function seen(k){ return !!ST.q[k]; }
 function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
 
-// ── 出題：錯題考點優先，其餘抽新題 ────────────────
-// 給一個待克服考點挑「這輪呈現哪一題」：變形題 → 同選文補充題 → 同考點兄弟題 → 原題重問
-function pickForEntry(e){
-  const orig = IDX.byK[e.k];
+/* ── 出題 ────────────────────────────────────── */
+// 給一個未攻克的 seed 挑「這次呈現哪一題」。順序：專屬變形題 → 同選文補充題
+// → 同考點（同 skill 優先）兄弟題 → 真的沒材料才原題重問。
+function pickForSeed(k, used){
+  const orig = IDX.byK[k];
   if(!orig) return null;
-  const used = new Set(e.used || []);
-  const fresh = arr => shuffle((arr||[]).filter(q => !used.has(q.k) && !seen(q.k)))[0];
-  let q = fresh(IDX.variants[e.k]);
+  const fresh = arr => shuffle((arr||[]).filter(q => !used.has(q.k)))[0];
+  let q = fresh(IDX.variants[k]);
   if(!q && orig.pg) q = fresh(IDX.suppsByPg[orig.pg]);
-  // 同考點的題（最精準的替代）：考的是同一件事，只是換材料
-  if(!q && orig.point) q = fresh((IDX.byPoint[orig.point]||[]).filter(s => s.k !== e.k));
   if(!q){
-    let sibs = (IDX.bySub[orig.sub]||[]).filter(s => s.k !== e.k);
+    let sibs = (IDX.bySub[orig.sub]||[]).filter(s => s.k !== k);
     if(orig.skill){ const same = sibs.filter(s => s.skill === orig.skill); if(same.length) sibs = same; }
     q = fresh(sibs);
   }
-  if(!q) q = orig;   // 沒新材料就原題重問
-  return q;
+  return q || orig;
 }
-// drillOnly：只出待克服考點（錯題專練），不補新題
-function composeRound(scope, drillOnly){
-  const items = [];
-  const usedK = new Set();
-  const dueEntries = ST.queue.slice(0, drillOnly ? ROUND_N : MAX_REDO_PER_ROUND);
-  for(const e of dueEntries){
-    const q = pickForEntry(e);
-    if(q && !usedK.has(q.k)){ items.push({q, entryK:e.k}); usedK.add(q.k); }
+function composeRound(){
+  const S = wk(), ks = seedKs();
+  const open = ks.filter(k => !S.seeds[k].done);
+  if(!open.length) return [];
+  const items = [], used = new Set();
+  if(S.round === 0){                       // 第 1 輪：原題，照 weeks.json 的順序
+    for(const k of ks){
+      const q = IDX.byK[k];
+      if(q){ items.push({q, seedK:k}); used.add(q.k); }
+    }
+    return items;
   }
-  if(drillOnly) return shuffle(items);
-  let pool = IDX.bank.filter(q => inScope(q, scope) && !seen(q.k) && !usedK.has(q.k)
-                                  && !ST.queue.some(e => e.k === q.k));
-  shuffle(pool);
-  for(const q of pool){ if(items.length >= ROUND_N) break; items.push({q, entryK:null}); usedK.add(q.k); }
-  if(items.length < ROUND_N){        // 新題抽完了 → 拿最久沒看的舊題複習
-    let old = IDX.bank.filter(q => inScope(q, scope) && !usedK.has(q.k))
-      .sort((a,b) => (ST.q[a.k]?.last||0) - (ST.q[b.k]?.last||0));
-    for(const q of old){ if(items.length >= ROUND_N) break; items.push({q, entryK:null, review:true}); usedK.add(q.k); }
+  const n = Math.min(ROUND_N, open.length * MAX_PER_SEED);
+  let i = 0;
+  while(items.length < n){                 // 未攻克的 seed 輪流出題
+    const k = open[i % open.length];
+    const q = pickForSeed(k, used);
+    if(q && !used.has(q.k)){ items.push({q, seedK:k}); used.add(q.k); }
+    i++;
+    if(i > open.length * MAX_PER_SEED * 3) break;   // 材料抽乾就收手
   }
   return shuffle(items);
 }
 
-// ── 作答與判定 ────────────────────────────────────
+/* ── 判定 ────────────────────────────────────── */
 function grade(item, choice){
-  const q = item.q, ok = (choice === q.ans);
-  let cleared = false;                 // 這一答是否讓一個待克服考點過關
-  const rec = (ST.q[q.k] ||= {r:0, w:0, last:0});
-  rec.last = ++ST.answered; ok ? rec.r++ : rec.w++;
-  if(ok) ST.correct++;
-  const entry = item.entryK ? ST.queue.find(e => e.k === item.entryK) : null;
-  if(entry){
-    (entry.used ||= []).push(q.k);
-    if(ok){
-      entry.streak = (entry.streak||0) + 1;
-      if(entry.streak >= ST.need){
-        ST.queue = ST.queue.filter(e => e !== entry);
-        ST.mastered[entry.k] = ST.round;
-        cleared = true;
-      }
-    } else entry.streak = 0;
-  } else if(!ok){
-    const key = q.tag === "bank" ? q.k : (q.variant_of || q.k);
-    if(!ST.queue.some(e => e.k === key)){
-      ST.queue.push({k:key, streak:0, used:[q.k], added:ST.round});
-      delete ST.mastered[key];
-    }
-  }
+  const S = wk(), q = item.q, ok = (choice === q.ans);
+  const e = S.seeds[item.seedK];
+  let cleared = false;
+  S.answered++; if(ok) S.correct++;
+  e.tries++; if(!ok) e.wrong++;
+  e.used.push(q.k);
+  if(ok){
+    e.streak++;
+    if(e.streak >= NEED && !e.done){ e.done = true; cleared = true; }
+  } else e.streak = 0;
   saveState();
   return {ok, cleared};
 }
 
-// ── 畫面 ──────────────────────────────────────────
+/* ── 畫面小工具 ──────────────────────────────── */
 const $ = id => document.getElementById(id);
-function show(id){ for(const s of ["scr-home","scr-quiz","scr-sum"]) $(s).classList.toggle("hidden", s!==id); window.scrollTo(0,0); }
+function show(id){
+  for(const s of ["scr-pick","scr-home","scr-week","scr-quiz","scr-sum"])
+    $(s).classList.toggle("hidden", s !== id);
+  window.scrollTo(0,0);
+}
 function esc(t){ const d=document.createElement("div"); d.textContent=t; return d.innerHTML; }
 
-// ── 動畫 ──────────────────────────────────────────
-// 系統開了「減少動態效果」就退化成靜態，不是消失。
+/* ── 動畫 ────────────────────────────────────── */
 const REDUCED = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 const SVG_TICK  = '<svg class="mark" viewBox="0 0 24 24"><path pathLength="1" d="M4.8 12.6l4.7 4.7L19.2 7"/></svg>';
 const SVG_CROSS = '<svg class="mark" viewBox="0 0 24 24"><path pathLength="1" d="M7.4 7.4l9.2 9.2"/><path pathLength="1" d="M16.6 7.4l-9.2 9.2"/></svg>';
-const COMBO_AT = {3:"連對 3 題", 5:"連對 5 題！", 7:"連對 7 題！", 10:"十題全連對，太強"};
-
+const COMBO_AT = {3:"連對 3 題", 5:"連對 5 題！", 7:"連對 7 題！", 10:"十題全對，太強"};
 let toastTimer = null;
 function toast(text, gold){
   const old = $("toast"); if(old) old.remove();
   clearTimeout(toastTimer);
   const el = document.createElement("div");
-  el.id = "toast"; el.textContent = text;
-  if(gold) el.className = "gold";
+  el.id = "toast"; el.textContent = text; if(gold) el.className = "gold";
   document.body.appendChild(el);
   toastTimer = setTimeout(() => el.remove(), REDUCED ? 1100 : 1320);
 }
-
 function confetti(){
   if(REDUCED) return;
   const cv = document.createElement("canvas"); cv.id = "confetti";
@@ -370,7 +412,7 @@ function confetti(){
   document.body.appendChild(cv);
   const ctx = cv.getContext("2d");
   const cols = ["#2b6cb0","#2f855a","#e0a020","#c53030","#7a5af0","#e07ab0"];
-  const P = Array.from({length:110}, () => ({
+  const P = Array.from({length:120}, () => ({
     x: W*(.18+.64*Math.random()), y: H*.34 + Math.random()*30*dpr,
     vx: (Math.random()-.5)*10*dpr, vy: (-7.5-Math.random()*7)*dpr,
     s: (4+Math.random()*4.5)*dpr, a: Math.random()*6.3, va: (Math.random()-.5)*.32,
@@ -389,15 +431,12 @@ function confetti(){
     }
     if(age < 1750) requestAnimationFrame(frame); else cv.remove();
   })(t0);
-  setTimeout(() => cv.remove(), 2600);   // 保底：rAF 沒觸發時也要把畫布收掉，別留在畫面上
+  setTimeout(() => cv.remove(), 2600);          // rAF 沒觸發也要把畫布收掉
 }
-
 function countUp(el, to){
   if(REDUCED || to <= 0){ el.textContent = to; return; }
-  const t0 = performance.now(), D = 560;
-  let done = false;
-  // ⚠️ requestAnimationFrame 在背景分頁、省電模式、無痕視窗切走時可能整段不觸發，
-  //    只靠它收尾會讓分數永遠停在 0。用 setTimeout 保底把最終值寫進去。
+  const t0 = performance.now(), D = 560; let done = false;
+  // rAF 在背景分頁／省電模式可能不跑完，用 setTimeout 保底寫入最終值
   setTimeout(() => { if(!done){ done = true; el.textContent = to; } }, D + 150);
   (function f(t){
     if(done) return;
@@ -406,325 +445,265 @@ function countUp(el, to){
     if(p < 1) requestAnimationFrame(f); else done = true;
   })(t0);
 }
-
-// ── FX：動畫層 ────────────────────────────────────
-// 這五個函式不知道也不在乎現在是哪種作答模式。
-// 練習模式在 answer() 當場呼叫；模擬考模式在交卷後的揭曉序列裡隔 REVEAL_MS 呼叫。
-const REVEAL_MS = 85;
 const FX = {
-  // 標記一個選項：ok=你選對了 / bad=你選錯了 / reveal=這才是正解
   optionMark(btn, kind){
     if(!btn) return;
     btn.classList.add(kind === "ok" ? "sel-ok" : kind === "bad" ? "sel-bad" : "reveal");
     const mk = btn.querySelector(".mk");
     if(mk) mk.innerHTML = (kind === "bad") ? SVG_CROSS : SVG_TICK;
   },
-  // 點亮第 i 個進度點
-  dotResolve(container, i, ok){
-    const d = container && container.children[i];
-    if(!d) return;
-    d.className = "dot " + (ok ? "ok" : "bad") + " just";
-    if(!REDUCED) setTimeout(() => d.classList.remove("just"), 400);
-  },
   combo(n){ if(COMBO_AT[n]) toast(COMBO_AT[n], n >= 7); },
-  cleared(n){ toast(n > 1 ? `克服 ${n} 個考點！` : "考點過關！", true); },
-  // 結算開獎。seq=true 逐點點亮（模擬考專屬）；false 直接顯示（練習模式已經一題一題揭曉過了）。
-  // onDone 在動畫跑完才呼叫，錯題清單等到那時再填，才不會提早爆雷。
-  finish(results, seq, onDone){
-    const total = results.length, right = results.filter(Boolean).length;
-    const dots = $("sumDots"), num = $("sumNum");
-    const done = () => { if(right === total && total >= 5) confetti(); onDone && onDone(); };
-    if(!seq || REDUCED){
-      dots.innerHTML = results.map(r => `<div class="dot ${r ? "ok" : "bad"}"></div>`).join("");
-      countUp(num, right);
-      setTimeout(done, REDUCED ? 0 : 580);
-      return;
-    }
-    dots.innerHTML = results.map(() => `<div class="dot"></div>`).join("");
-    let acc = 0, run = 0;
-    results.forEach((r, i) => setTimeout(() => {
-      FX.dotResolve(dots, i, r);
-      if(r){ num.textContent = ++acc; run++; FX.combo(run); } else run = 0;
-      if(i === total - 1) setTimeout(done, 360);
-    }, 300 + i * REVEAL_MS));
-  }
+  cleared(){ toast("考點攻克！", true); }
 };
 
-const SCOPES = [["ALL","全部"],["T1","形音義"],["T2","閱讀"],
-  ["字音","字音"],["字形","字形"],["字義","字義"],["詞語運用","詞語"],["成語俗諺","成語"],["標點符號","標點"],
-  ["白話閱讀","白話"],["文言閱讀","文言"],["寫作手法","寫作手法"]];
-
-const MODES = [["practice","練習模式"],["exam","模擬考模式"]];
-
-// ── 計時（只有模擬考用）──────────────────────────
-let timerId = null;
-function fmtT(ms){ const s = Math.max(0, Math.floor(ms/1000));
-  return String(Math.floor(s/60)).padStart(2,"0") + ":" + String(s%60).padStart(2,"0"); }
-function startTimer(){
-  clearInterval(timerId);
-  const el = $("qTimer");
-  el.classList.toggle("hidden", RUN.mode !== "exam");
-  if(RUN.mode !== "exam") return;
-  const tick = () => el.textContent = "⏱ " + fmtT(Date.now() - RUN.t0);
-  tick(); timerId = setInterval(tick, 1000);
+/* ── 老師端同步（fire-and-forget，失敗不擋作答）── */
+let syncState = "off";
+function sync(){
+  if(!SYNC_URL){ syncState = "off"; return; }
+  const S = wk(), ks = seedKs();
+  const body = JSON.stringify({
+    sid: ST.sid, name: ST.name, week: ST.week, round: S.round,
+    done: ks.filter(k => S.seeds[k].done).length, total: ks.length,
+    answered: S.answered, correct: S.correct,
+    inRound: RUN ? {i: RUN.i + 1, n: RUN.items.length} : null,
+    seeds: ks.map(k => ({k, sub: (IDX.byK[k]||{}).sub || "",
+                         stem: ((IDX.byK[k]||{}).stem || "").slice(0, 22),
+                         done: S.seeds[k].done, streak: S.seeds[k].streak,
+                         tries: S.seeds[k].tries, wrong: S.seeds[k].wrong})),
+    ts: Date.now()
+  });
+  fetch(SYNC_URL, {method:"POST", mode:"no-cors", keepalive:true,
+                   headers:{"Content-Type":"text/plain;charset=utf-8"}, body})
+    .then(() => { syncState = "on"; paintSync(); })
+    .catch(() => { syncState = "err"; paintSync(); });
 }
-function stopTimer(){ clearInterval(timerId); timerId = null; }
+function paintSync(){
+  const el = $("syncNote"); if(!el) return;
+  const m = {off:["", "未連線老師端（單機模式）"], on:["on","已同步到老師端"], err:["err","同步失敗，作答不受影響"]}[syncState];
+  el.innerHTML = `<span class="syncdot ${m[0]}"></span>${m[1]}`;
+}
 
-function renderHome(){
-  const mbox = $("modeChips"); mbox.innerHTML = "";
-  for(const [val,label] of MODES){
+/* ── 選學生 ──────────────────────────────────── */
+function renderPick(){
+  const box = $("pickChips"); box.innerHTML = "";
+  for(const [sid, name] of STUDENTS){
     const c = document.createElement("button");
-    c.className = "chip" + (ST.mode === val ? " on" : "");
-    c.textContent = label;
-    c.onclick = () => { ST.mode = val; saveState(); renderHome(); };
-    mbox.appendChild(c);
-  }
-  $("modeNote").textContent = ST.mode === "exam"
-    ? "10 題一次寫完再交卷。作答時不告訴你對錯，可以回上一題改答案，也會計時。交卷後逐題開獎，適合練會考的配速。"
-    : "每題按下去就知道對錯、馬上看解析。答錯的考點會進待克服清單，下一輪出它的變形題。";
-  $("btnStart").textContent = ST.mode === "exam" ? "開始模擬考（10 題）" : "開始刷題（10 題）";
-
-  const box = $("scopeChips"); box.innerHTML = "";
-  for(const [val,label] of SCOPES){
-    const n = IDX.bank.filter(q => inScope(q,val)).length;
-    if(!n) continue;
-    const c = document.createElement("button");
-    c.className = "chip" + (ST.scope===val ? " on" : "");
-    c.innerHTML = esc(label) + `<span class="n">${n}</span>`;
-    c.onclick = () => { ST.scope = val; saveState(); renderHome(); };
+    c.className = "chip"; c.textContent = name;
+    c.onclick = () => { ST = freshState(sid, name); saveState(); renderHome(); show("scr-home"); };
     box.appendChild(c);
   }
-  const newLeft = IDX.bank.filter(q => inScope(q,ST.scope) && !seen(q.k)).length;
-  $("scopeNote").textContent = `此範圍還有 ${newLeft} 題沒做過。答錯的題目，下一輪會出現它的變形或同考點題，直到你把它答對為止。`;
-  $("stDone").textContent = Object.keys(ST.q).length;
-  $("stAcc").textContent = ST.answered ? Math.round(100*ST.correct/ST.answered) + "%" : "–";
-  $("stQueue").textContent = ST.queue.length;
-  $("btnDrill").disabled = !ST.queue.length;
-  $("queuePreview").textContent = ST.queue.length
-    ? "待克服：" + ST.queue.slice(0,3).map(e => (IDX.byK[e.k]?.stem||"").slice(0,18)+"…").join("／") + (ST.queue.length>3 ? ` 等 ${ST.queue.length} 個` : "")
-    : "目前沒有待克服的錯題，讚！";
-  document.querySelectorAll("input[name=need]").forEach(r => {
-    r.checked = (+r.value === ST.need);
-    r.onchange = () => { ST.need = +r.value; saveState(); };
-  });
-  $("flaggedNote").textContent = ST.flagged.length ? `已回報 ${ST.flagged.length} 題有問題（老師會處理）` : "";
+  show("scr-pick");
 }
 
-function startRound(drillOnly){
-  const items = composeRound(ST.scope, drillOnly === true);
-  if(!items.length){
-    alert(drillOnly ? "目前沒有待克服的錯題，先去刷一輪吧！" : "這個範圍沒有可出的題目");
-    return;
+/* ── 首頁 ────────────────────────────────────── */
+// 回首頁時，剛攻克的那幾格要彈出來，讓「這輪的成果」看得見。
+// 用過就清掉，否則之後每次 renderHome 都會重播一次。
+let JUST_DONE = new Set();
+function renderHome(){
+  const S = wk(), ks = seedKs();
+  const done = ks.filter(k => S.seeds[k].done).length;
+  $("who").textContent = ST.name;
+  $("wkNo").textContent = "第 " + ST.week;
+  $("wkBar").style.width = (ks.length ? done / ks.length * 100 : 0) + "%";
+  $("wkNote").textContent = `本週 ${ks.length} 個考點，已攻克 ${done} 個。攻克＝在不同題目上連續答對 ${NEED} 次。`;
+
+  const g = $("seedGrid"); g.innerHTML = "";
+  ks.forEach((k, i) => {
+    const q = IDX.byK[k] || {}, e = S.seeds[k];
+    const d = document.createElement("div");
+    d.className = "seed" + (e.done ? " done" : "") + (JUST_DONE.has(k) ? " justdone" : "");
+    d.innerHTML = `<b>${e.done ? "✓" : i+1}</b><span class="t">${esc(q.sub || "?")}</span>`
+                + (e.done ? "" : `<span style="font-size:11px">${e.streak}/${NEED}</span>`);
+    d.title = (q.stem || "");
+    g.appendChild(d);
+  });
+
+  const allDone = done === ks.length && ks.length > 0;
+  $("btnGo").textContent = allDone ? "本週已完成 ✓" : (S.round === 0 ? "開始第 1 輪（10 題）" : `再練第 ${S.round + 1} 輪`);
+  $("btnGo").disabled = allDone;
+  $("goNote").textContent = allDone
+    ? "10 個考點全部攻克了。可以換下一週，或按「本週重來」再驗一次。"
+    : (S.round === 0 ? "先做完這 10 題，答錯的下一輪會換成變形題或同考點題再問。"
+                     : `第 ${S.round + 1} 輪只出還沒攻克的 ${ks.length - done} 個考點的相關題，不補新題。`);
+  $("stRound").textContent = S.round;
+  $("stDone").textContent = done;
+  $("stAcc").textContent = S.answered ? Math.round(100 * S.correct / S.answered) + "%" : "–";
+  paintSync();
+  JUST_DONE.clear();          // 只彈這一次
+}
+
+function renderWeeks(){
+  const box = $("weekChips"); box.innerHTML = "";
+  for(const w of WK.weeks){
+    const s = ST.weeks[String(w.week)];
+    const d = s ? w.ks.filter(k => s.seeds[k] && s.seeds[k].done).length : 0;
+    const c = document.createElement("button");
+    c.className = "chip" + (w.week === ST.week ? " on" : "");
+    c.innerHTML = `第 ${w.week} 週` + (d ? ` <span style="font-size:12px;opacity:.8">${d}/${w.ks.length}</span>` : "");
+    c.onclick = () => { ST.week = w.week; saveState(); renderHome(); show("scr-home"); };
+    box.appendChild(c);
   }
-  RUN = {items, i:0, results:[], picks:[], drill:drillOnly === true,
-         mode:ST.mode, combo:0, t0:Date.now(), graded:false, reviewing:false};
-  show("scr-quiz"); startTimer(); renderQ();
+  show("scr-week");
 }
 
-// 揭曉一題：把正解/你的選擇畫上去並顯示解析。
-// 練習模式在答題當下呼叫；模擬考在「逐題檢討」時呼叫。兩邊長得一模一樣。
-function paintReveal(item, pick){
-  const q = item.q, ok = pick === q.ans;
-  document.querySelectorAll("#qOpts .opt").forEach((b,i) => {
-    b.disabled = true;
-    b.classList.remove("picked");
-    const letter = "ABCD"[i];
-    if(letter === q.ans) FX.optionMark(b, (ok && letter === pick) ? "ok" : "reveal");
-    if(letter === pick && !ok) FX.optionMark(b, "bad");
-  });
-  const srcNote = q.ansSrc === "ai" ? "答案由 AI 解題（雙重驗證一致）" : "官方參考答案";
-  const ent = item.entryK ? ST.queue.find(e => e.k === item.entryK) : null;
-  const head = ok ? "答對了！" : (pick ? `答錯了，正解是 (${q.ans})` : `沒作答，正解是 (${q.ans})`);
-  $("qFeedback").innerHTML =
-    `<div class="feedback ${ok ? "ok" : "bad"}"><b>${head}</b>` +
-    (q.expl ? `<div class="expl">${esc(q.expl)}</div>` : "") +
-    (!ok && !item.entryK ? `<div class="meta">這個考點已加入待克服清單，下一輪會再出變形題。</div>` : "") +
-    (item.entryK && ok ? (ent
-        ? `<div class="meta">很好！再答對 ${ST.need - ent.streak} 次就過關。</div>`
-        : `<div class="meta">這個考點過關，從清單移除！</div>`) : "") +
-    `<div class="meta">${srcNote} · 出處：${esc(q.src||"題庫")} · ${esc(q.sub||"")}</div></div>`;
+/* ── 作答 ────────────────────────────────────── */
+function startRound(){
+  const items = composeRound();
+  if(!items.length){ alert("本週 10 個考點都攻克了！"); return; }
+  RUN = {items, i:0, results:[], picks:[], combo:0, cleared:0, clearedKs:[]};
+  show("scr-quiz"); renderQ();
 }
-
 function renderQ(){
-  const item = RUN.items[RUN.i], q = item.q;
-  const exam = RUN.mode === "exam", rev = RUN.reviewing, last = RUN.i === RUN.items.length - 1;
-  // 模擬考作答中不顯示題型（那是提示），檢討時才給
-  $("qPos").textContent = `第 ${RUN.i+1} / ${RUN.items.length} 題` + ((exam && !rev) ? "" : ` · ${q.sub}`);
+  const item = RUN.items[RUN.i], q = item.q, S = wk();
+  const e = S.seeds[item.seedK];
+  $("qPos").textContent = `第 ${RUN.i+1} / ${RUN.items.length} 題 · ${q.sub}`;
   renderQDots();
-  $("qRetag").innerHTML = (exam && !rev) ? ""
-    : item.entryK ? `<span class="retag">上次錯的考點，再挑戰！</span>`
-    : item.review ? `<span class="retag" style="background:var(--chip);color:var(--sub)">複習題</span>` : "";
-  $("qPassage").innerHTML = q.pg ? `<div class="passage">${esc(DB.passages[q.pg]||"")}</div>` : "";
+  $("qRetag").innerHTML = (wk().round > 0)
+    ? `<span class="retag">還沒攻克的考點，再挑戰（已連對 ${e.streak}/${NEED}）</span>`
+    : "";
+  $("qPassage").innerHTML = q.pg
+    ? `<div class="pgwrap" id="pgw"><div class="passage">${esc(DB.passages[q.pg]||"")}</div><div class="fade"></div></div>`
+      + `<button class="pgtog" id="pgTog">展開全文 ▾</button>`
+    : "";
+  if(q.pg){
+    $("pgTog").onclick = () => {
+      const w = $("pgw"), open = w.classList.toggle("open");
+      $("pgTog").textContent = open ? "收合選文 ▴" : "展開全文 ▾";
+    };
+  }
   $("qStem").textContent = q.stem;
   const box = $("qOpts"); box.innerHTML = "";
   "ABCD".split("").forEach((L,i) => {
     const b = document.createElement("button");
-    b.className = "opt" + (exam && !rev && RUN.picks[RUN.i] === L ? " picked" : "");
-    b.innerHTML = `<span class="ltr">${L}</span><span class="otxt">${esc(q.opts[i])}</span>`
-                + `<span class="mk"></span>`;
-    b.onclick = () => answer(item, L, b);
+    b.className = "opt";
+    b.innerHTML = `<span class="ltr">${L}</span><span class="otxt">${esc(q.opts[i])}</span><span class="mk"></span>`;
+    b.onclick = () => answer(item, L);
     box.appendChild(b);
   });
   $("qFeedback").innerHTML = "";
-  // 上一題：模擬考作答中與檢討時可回頭；練習模式不行（答案已定，回頭沒意義）
-  $("btnPrev").classList.toggle("hidden", !(exam && RUN.i > 0));
-  if(rev){
-    paintReveal(item, RUN.picks[RUN.i]);
-    $("btnNext").disabled = false;
-    $("btnNext").textContent = last ? "回結算" : "下一題";
-  } else if(exam){
-    $("btnNext").disabled = false;                 // 模擬考允許跳題不答
-    $("btnNext").textContent = last ? "交卷" : "下一題";
-  } else {
-    $("btnNext").disabled = true;                  // 練習模式要先作答
-    $("btnNext").textContent = last ? "看結果" : "下一題";
-  }
+  $("btnNext").disabled = true;
+  $("btnNext").textContent = (RUN.i === RUN.items.length-1) ? "看結果" : "下一題";
   $("qFlag").onclick = () => {
     if(!ST.flagged.includes(q.k)) ST.flagged.push(q.k);
     saveState(); $("qFlag").textContent = "已回報 ✓";
   };
   $("qFlag").textContent = "這題怪怪的？回報";
 }
-
-function answer(item, L, btn){
-  // ── 模擬考作答中：只記選擇，不判對錯、不揭曉 ──
-  if(RUN.mode === "exam" && !RUN.reviewing){
-    RUN.picks[RUN.i] = L;
-    document.querySelectorAll("#qOpts .opt").forEach(b => b.classList.remove("picked"));
-    btn.classList.add("picked");
-    renderQDots();
-    return;
-  }
-  if(RUN.reviewing) return;                        // 檢討模式不可改答案
+function answer(item, L){
   if(RUN.results[RUN.i] !== undefined) return;
-  // ⚠️ grade() 回傳的是物件 {ok, cleared}，不是布林。直接當布林用會恆為真
-  //    ⇒ 每題都判答對、圓點全綠、分數永遠滿分。務必解構。
+  const q = item.q;
+  // ⚠️ grade() 回傳 {ok, cleared} 物件，不是布林。直接當布林用會恆為真。
   const {ok, cleared} = grade(item, L);
-  RUN.results[RUN.i] = ok;
-  RUN.picks[RUN.i] = L;
-  paintReveal(item, L);
-  // 連對計數：答錯歸零，達門檻給一次提示
+  RUN.results[RUN.i] = ok; RUN.picks[RUN.i] = L;
+  if(cleared){ RUN.cleared++; RUN.clearedKs.push(item.seedK); }
+  document.querySelectorAll("#qOpts .opt").forEach((b,i) => {
+    b.disabled = true;
+    const letter = "ABCD"[i];
+    if(letter === q.ans) FX.optionMark(b, (ok && letter === L) ? "ok" : "reveal");
+    if(letter === L && !ok) FX.optionMark(b, "bad");
+  });
+  const e = wk().seeds[item.seedK];
+  const srcNote = q.ansSrc === "ai" ? "答案由 AI 解題（雙重驗證一致）" : "官方參考答案";
+  $("qFeedback").innerHTML =
+    `<div class="feedback ${ok ? "ok" : "bad"}"><b>${ok ? "答對了！" : "答錯了，正解是 (" + q.ans + ")"}</b>` +
+    (q.expl ? `<div class="expl">${esc(q.expl)}</div>` : "") +
+    (cleared ? `<div class="clearbadge">✓ 這個考點攻克了</div>`
+             : ok ? `<div class="meta">再答對 ${NEED - e.streak} 次，這個考點就攻克。</div>`
+                  : `<div class="meta">連對歸零，下一輪會再換一題問同一個考點。</div>`) +
+    `<div class="meta">${srcNote} · 出處：${esc(q.src||"題庫")}</div></div>`;
   RUN.combo = ok ? RUN.combo + 1 : 0;
-  if(ok) FX.combo(RUN.combo);
-  if(cleared) FX.cleared(1);
+  if(cleared) FX.cleared(); else if(ok) FX.combo(RUN.combo);
   $("btnNext").disabled = false;
   renderQDots(RUN.i);
 }
-
 function renderQDots(just){
   $("qDots").innerHTML = RUN.items.map((_,i) => {
     let c = "dot";
     if(i === RUN.i) c += " now";
     else if(RUN.results[i] === true) c += " ok";
     else if(RUN.results[i] === false) c += " bad";
-    else if(RUN.picks[i]) c += " picked";
     if(i === just) c += " just";
     return `<div class="${c}"></div>`;
   }).join("");
 }
-
-// 交卷：一次判完所有題，再交給 FX 逐題開獎
-function submitExam(){
-  const blank = RUN.items.filter((_,i) => !RUN.picks[i]).length;
-  if(blank && !confirm(`還有 ${blank} 題沒作答，確定交卷？沒作答會算答錯。`)) return;
-  stopTimer();
-  RUN.graded = true;
-  RUN.cleared = 0;
-  RUN.items.forEach((item, i) => {
-    const {ok, cleared} = grade(item, RUN.picks[i] || "");   // 空字串必不等於 ans ⇒ 算錯
-    RUN.results[i] = ok;
-    if(cleared) RUN.cleared++;
-  });
-  RUN.elapsed = Date.now() - RUN.t0;
-  finishRound();
-}
-
-function prevQ(){ if(RUN.i > 0){ RUN.i--; renderQ(); } }
-
 function nextQ(){
-  const last = RUN.i === RUN.items.length - 1;
-  if(RUN.reviewing){
-    if(last){ RUN.reviewing = false; show("scr-sum"); }
-    else { RUN.i++; renderQ(); }
-    return;
-  }
-  if(RUN.mode === "exam" && last) return submitExam();
-  if(!last){ RUN.i++; renderQ(); }
+  if(RUN.i < RUN.items.length-1){ RUN.i++; renderQ(); }
   else finishRound();
 }
 function finishRound(){
-  stopTimer();
-  if(RUN.elapsed === undefined) RUN.elapsed = Date.now() - RUN.t0;
-  ST.round++; saveState();
-  const right = RUN.results.filter(Boolean).length;
-  const exam = RUN.mode === "exam";
-  // 先清空，答錯清單等開獎跑完才填 —— 否則模擬考還沒點亮就先爆雷
-  $("sumScore").innerHTML = `<span id="sumNum">0</span> / ${RUN.items.length}`;
-  $("sumWrong").innerHTML = "";
-  $("sumNote").innerHTML = "";
-  $("btnReview").classList.add("hidden");
+  const S = wk(), ks = seedKs();
+  S.round++; saveState();
+  const right = RUN.results.filter(Boolean).length, total = RUN.items.length;
+  const done = ks.filter(k => S.seeds[k].done).length;
+  const allDone = done === ks.length;
+
+  $("sumTitle").textContent = `第 ${S.round} 輪結果`;
+  $("sumDots").innerHTML = RUN.results.map(r => `<div class="dot ${r ? "ok" : "bad"}"></div>`).join("");
+  $("sumScore").innerHTML = `<span id="sumNum">0</span> / ${total}`;
+  $("sumCleared").innerHTML = RUN.cleared
+    ? `<div style="text-align:center"><span class="clearbadge">✓ 這輪攻克 ${RUN.cleared} 個考點</span></div>` : "";
+  const wrong = RUN.items.filter((it,i) => RUN.results[i] === false);
+  $("sumWrong").innerHTML = wrong.length
+    ? `<div class="wronglist" style="margin-top:10px">答錯的：<ul>` + wrong.map(it =>
+        `<li>${esc(it.q.stem.slice(0,28))}…（正解 ${it.q.ans}）</li>`).join("") + `</ul></div>`
+    : `<div class="wronglist" style="margin-top:10px">全對！</div>`;
+  $("sumNote").textContent = allDone
+    ? `本週 ${ks.length} 個考點全部攻克，這一週結束了。`
+    : `還有 ${ks.length - done} 個考點沒攻克，下一輪只出它們的相關題。`;
+  $("btnAgain").classList.toggle("hidden", allDone);
+  $("btnHome").classList.toggle("demote", !allDone);
   show("scr-sum");
-  FX.finish(RUN.results, exam, () => {
-    const wrong = RUN.items.filter((it,i) => RUN.results[i] === false);
-    $("sumWrong").innerHTML = wrong.length
-      ? `<div class="wronglist">答錯的題：<ul>` + wrong.map(it =>
-          `<li>${esc(it.q.stem.slice(0,30))}…（正解 ${it.q.ans}）</li>`).join("") + `</ul></div>`
-      : `<div class="wronglist">全對！</div>`;
-    const clearedNow = RUN.items.filter(it => it.entryK && !ST.queue.some(e => e.k === it.entryK)).length;
-    $("sumNote").innerHTML = (ST.queue.length
-      ? `待克服考點還有 ${ST.queue.length} 個，下一輪會優先出它們的變形題。`
-      : `沒有待克服的考點了，下一輪全是新題。`)
-      + (exam ? `　用時 ${fmtT(RUN.elapsed)}（平均每題 ${Math.round(RUN.elapsed/1000/RUN.items.length)} 秒）` : "")
-      + (clearedNow ? `<div class="clearbadge">✓ 這輪克服了 ${clearedNow} 個考點</div>` : "");
-    if(exam) $("btnReview").classList.remove("hidden");   // 模擬考沒看過解析，一定要能檢討
-  });
+  countUp($("sumNum"), right);
+  // 兩件事都值得放彩帶，別只留里程碑那一個：
+  //   ① 一輪全對 —— 當下的成就感，第 1 輪就可能發生
+  //   ② 本週全攻克 —— 真正的里程碑，另外加一句金色提示做區隔
+  if(allDone){
+    setTimeout(() => { confetti(); toast(`第 ${ST.week} 週完成！`, true); }, 400);
+  } else if(right === total && total >= 5){
+    setTimeout(confetti, 300);
+  }
 }
 
-// ── 備份 ──────────────────────────────────────────
-function doExport(){
-  const ta = $("backupTa");
-  $("backupBox").classList.remove("hidden");
-  ta.value = JSON.stringify(ST);
-  ta.select(); try{ document.execCommand("copy"); }catch(e){}
-  alert("進度已放到下方文字框（已嘗試複製）。存到記事本，之後可匯入。");
-}
-function doImportBox(){ $("backupBox").classList.remove("hidden"); $("backupTa").value=""; $("backupTa").focus(); }
-function doImport(){
-  try{
-    const s = JSON.parse($("backupTa").value);
-    if(!s || typeof s.q !== "object") throw 0;
-    ST = Object.assign(freshState(), s); saveState(); renderHome();
-    alert("匯入成功！");
-  }catch(e){ alert("匯入失敗：內容不是有效的進度資料"); }
-}
-
-// ── 啟動 ──────────────────────────────────────────
+/* ── 啟動 ────────────────────────────────────── */
 async function boot(){
-  const res = await fetch("questions.json", {cache:"no-store"});
-  DB = await res.json();
+  const [qs, ws] = await Promise.all([
+    fetch("questions.json", {cache:"no-store"}).then(r => r.json()),
+    fetch("weeks.json",     {cache:"no-store"}).then(r => r.json()),
+    loadConfig()
+  ]);
+  DB = qs; WK = ws;
   buildIndex();
   ST = loadState();
-  $("ver").textContent = `題庫 ${IDX.bank.length} 題`;
-  $("btnStart").onclick = () => startRound(false);
-  $("btnDrill").onclick = () => startRound(true);
-  $("btnNext").onclick = nextQ;
-  $("btnPrev").onclick = prevQ;
-  $("btnReview").onclick = () => { RUN.reviewing = true; RUN.i = 0; show("scr-quiz"); renderQ(); };
-  $("btnAgain").onclick = () => startRound(RUN && RUN.drill);
-  $("btnHome").onclick = () => { renderHome(); show("scr-home"); };
-  $("btnQuit").onclick = () => {
-    if(confirm(RUN && RUN.mode === "exam" && !RUN.graded
-        ? "放棄本次模擬考？這次作答不會計分。" : "放棄本輪？已作答的紀錄會保留。")){
-      stopTimer(); renderHome(); show("scr-home");
+  // config.js 改了名字時，已經選過人的裝置要跟著更新。
+  // 不然學生端顯示新名字、送給老師端的卻是 localStorage 裡的舊名字，兩邊對不起來。
+  // 認人靠代號（sid），不靠名字，所以改名不會弄丟進度。
+  if(ST){
+    const s = STUDENTS.find(x => x[0] === ST.sid);
+    if(s && ST.name !== s[1]){ ST.name = s[1]; saveState(); }
+  }
+
+  $("btnGo").onclick     = startRound;
+  $("btnNext").onclick   = nextQ;
+  $("btnAgain").onclick  = startRound;
+  $("btnHome").onclick   = () => {
+    JUST_DONE = new Set(RUN ? RUN.clearedKs : []);   // 這輪剛攻克的，回首頁彈一下
+    renderHome(); show("scr-home");
+  };
+  $("btnQuit").onclick   = () => { if(confirm("中斷本輪？已作答的都算數。")){ renderHome(); show("scr-home"); } };
+  $("btnWeek").onclick   = renderWeeks;
+  $("btnWeekBack").onclick = () => { renderHome(); show("scr-home"); };
+  $("btnSwitch").onclick = () => { if(confirm("換人？這台裝置的進度會留著，之後選回同一個人就看得到。")) renderPick(); };
+  $("btnReset").onclick  = () => {
+    if(confirm(`第 ${ST.week} 週的進度全部歸零？`)){
+      delete ST.weeks[String(ST.week)]; saveState(); renderHome();
     }
   };
-  $("btnExport").onclick = doExport;
-  $("btnImport").onclick = doImportBox;
-  $("btnDoImport").onclick = doImport;
-  $("btnReset").onclick = () => { if(confirm("確定把所有進度歸零？")){ ST = freshState(); saveState(); renderHome(); } };
-  renderHome(); show("scr-home");
+
+  if(ST){ renderHome(); show("scr-home"); } else renderPick();
 }
-boot().catch(e => { document.body.innerHTML = "<p style='padding:30px'>題庫載入失敗，請重新整理。<br>" + e + "</p>"; });
+boot().catch(e => {
+  document.body.innerHTML = "<p style='padding:30px'>題庫載入失敗，請重新整理。<br>" + e + "</p>";
+});
 </script>
 </body>
 </html>

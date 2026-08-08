@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>刷題 · 老師端</title>
+<style>
+:root{
+  --bg:#f5f6f8; --card:#ffffff; --ink:#1c2430; --sub:#66707e;
+  --line:#e3e7ec; --accent:#2b6cb0; --accent-ink:#ffffff;
+  --ok:#2f855a; --ok-bg:#d7efe1; --bad:#c53030; --bad-bg:#fbdcdc;
+  --warn:#b7791f; --warn-bg:#fdf0d5; --chip:#eef1f5;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#14181e; --card:#1e242c; --ink:#e8ecf1; --sub:#98a2ae;
+    --line:#313a45; --accent:#63a4e0; --accent-ink:#0e1319;
+    --ok:#68c495; --ok-bg:#1f4433; --bad:#f08585; --bad-bg:#4a2626;
+    --warn:#e0b050; --warn-bg:#3d3216; --chip:#2a323c;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0; background:var(--bg); color:var(--ink);
+  font-family:"PingFang TC","Noto Sans TC","Microsoft JhengHei",sans-serif;
+  font-size:16px; line-height:1.6}
+.wrap{max-width:1100px; margin:0 auto; padding:14px 14px 50px}
+header{display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; padding:6px 2px 12px}
+header h1{font-size:20px; margin:0; letter-spacing:.05em}
+header .live{font-size:13px; color:var(--sub); margin-left:auto}
+.dot{display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--line); margin-right:5px}
+.dot.on{background:var(--ok)} .dot.err{background:var(--bad)}
+.card{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px; margin-bottom:14px}
+h2{font-size:16px; margin:0 0 10px}
+.note{font-size:13.5px; color:var(--sub); margin-top:8px}
+.hidden{display:none}
+input[type=text]{width:100%; padding:10px; border:1px solid var(--line); border-radius:9px;
+  background:var(--chip); color:var(--ink); font-size:14px}
+button{background:var(--accent); color:var(--accent-ink); border:0; border-radius:10px;
+  padding:9px 18px; font-size:15px; font-weight:600; cursor:pointer}
+button.ghost{background:none; border:1px solid var(--line); color:var(--sub); font-weight:400}
+.chips{display:flex; flex-wrap:wrap; gap:7px}
+.chip{border:1px solid var(--line); background:var(--chip); color:var(--ink);
+  border-radius:999px; padding:5px 13px; font-size:14px; cursor:pointer}
+.chip.on{background:var(--accent); border-color:var(--accent); color:var(--accent-ink); font-weight:600}
+
+/* 並排 */
+.cols{display:grid; grid-template-columns:1fr 1fr; gap:14px}
+@media (max-width:720px){ .cols{grid-template-columns:1fr} }
+.stu h3{margin:0 0 2px; font-size:18px}
+.stu .meta{font-size:13px; color:var(--sub); margin-bottom:10px}
+.bar{height:12px; border-radius:999px; background:var(--chip); overflow:hidden; margin:8px 0 4px}
+.bar i{display:block; height:100%; background:var(--ok); border-radius:999px; transition:width .5s}
+.kpi{display:flex; gap:8px; margin:10px 0 4px}
+.kpi div{flex:1; text-align:center; background:var(--chip); border-radius:9px; padding:8px 3px}
+.kpi b{display:block; font-size:20px} .kpi span{font-size:11.5px; color:var(--sub)}
+.now{background:var(--warn-bg); color:var(--warn); border-radius:9px; padding:7px 11px;
+  font-size:13.5px; font-weight:600; margin-top:8px}
+.stale{background:var(--bad-bg); color:var(--bad)}
+
+/* 考點對照表 */
+table{width:100%; border-collapse:collapse; font-size:14px}
+th,td{padding:7px 8px; border-bottom:1px solid var(--line); text-align:left; vertical-align:middle}
+th{font-size:12.5px; color:var(--sub); font-weight:600; white-space:nowrap}
+td.k{font-size:13px; color:var(--sub); max-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.pill{display:inline-block; min-width:52px; text-align:center; border-radius:999px;
+  padding:2px 9px; font-size:12.5px; font-weight:700}
+.pill.done{background:var(--ok-bg); color:var(--ok)}
+.pill.mid{background:var(--warn-bg); color:var(--warn)}
+.pill.open{background:var(--chip); color:var(--sub)}
+.pill.stuck{background:var(--bad-bg); color:var(--bad)}
+tr.both{background:var(--bad-bg)}
+tr.both td:first-child{box-shadow:inset 3px 0 0 var(--bad)}
+.legend{font-size:12.5px; color:var(--sub); margin-top:10px}
+.legend span{margin-right:14px; white-space:nowrap}
+.empty{color:var(--sub); font-size:14px; padding:10px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>刷題 · 老師端</h1>
+  <span class="live" id="live"><span class="dot"></span>尚未連線</span>
+</header>
+
+<!-- 沒設定網址時才出現 -->
+<div class="card hidden" id="setup">
+  <h2>連上同步後端</h2>
+  <div class="note" style="margin:0 0 10px">
+    貼上 Apps Script 部署後的 <code>/exec</code> 網址。
+    正常情況這個網址已經寫在 <code>config.js</code>，這裡只是備用；
+    貼在這裡只會存在你這台裝置。
+  </div>
+  <input type="text" id="urlIn" placeholder="https://script.google.com/macros/s/AKfycb.../exec">
+  <div style="margin-top:10px; display:flex; gap:8px">
+    <button id="btnSave">連線</button>
+    <button class="ghost" id="btnClear">清除</button>
+  </div>
+</div>
+
+<div class="card" id="weekCard">
+  <h2>週次</h2>
+  <div class="chips" id="weekChips"></div>
+  <div class="note" id="weekNote"></div>
+</div>
+
+<div class="cols" id="cols"></div>
+
+<div class="card" id="common">
+  <h2>共同弱點 — 這堂課該講的</h2>
+  <div id="commonBody"></div>
+  <div class="legend">
+    <span><b class="pill done">攻克</b> 連續答對 2 次</span>
+    <span><b class="pill mid">1/2</b> 對了一次，再對一次就過</span>
+    <span><b class="pill open">未練</b> 這輪還沒碰到</span>
+    <span><b class="pill stuck">卡住</b> 練 3 次以上仍未攻克</span>
+  </div>
+</div>
+</div>
+
+<script>
+"use strict";
+/* ══════════════════════════════════════════════════════════════
+   老師端：兩位學生並排對照
+
+   資料靠 JSONP 拉（不是 fetch）。Apps Script 的網頁應用程式會 302
+   轉到 googleusercontent.com，轉址後的回應沒有 CORS 標頭，跨網域
+   fetch 會被瀏覽器擋掉。JSONP 用 <script> 標籤載入，不受同源限制。
+
+   這頁的重點不是「兩欄資料」，是最下面那張【共同弱點】表：
+   兩個人都沒攻克的考點，才是課堂上值得花時間講的。
+   ══════════════════════════════════════════════════════════════ */
+
+const LS_URL  = "guowen_teacher_url";
+const POLL_MS = 5000;
+const STALE_MS = 90000;     // 超過 90 秒沒更新，視為那位學生離線
+
+// ⚠️ 設定用 fetch + no-store 讀，不用 <script src>：後者會被瀏覽器快取，
+//    改了名字或同步網址卻「看起來沒生效」，就是這個原因。
+let STUDENTS = [["A","學生一"],["B","學生二"]];
+const $ = id => document.getElementById(id);
+const esc = t => { const d=document.createElement("div"); d.textContent=t==null?"":t; return d.innerHTML; };
+
+let CFG_URL = "";
+let URL_ = (localStorage.getItem(LS_URL) || "").trim();
+let ROWS = [];
+let WEEK = null;            // null = 自動追最新
+let jsonpN = 0, lastOk = 0, lastErr = false;
+
+/* ── JSONP ─────────────────────────────────────── */
+function pull(){
+  if(!URL_) return;
+  const cb = "__t" + (++jsonpN);
+  const s = document.createElement("script");
+  let done = false;
+  window[cb] = rows => {
+    done = true;
+    ROWS = Array.isArray(rows) ? rows : [];
+    lastOk = Date.now(); lastErr = false;
+    cleanup(); render();
+  };
+  const cleanup = () => { delete window[cb]; s.remove(); };
+  s.onerror = () => { if(!done){ lastErr = true; cleanup(); paintLive(); } };
+  setTimeout(() => { if(!done){ lastErr = true; cleanup(); paintLive(); } }, 12000);
+  s.src = URL_ + (URL_.includes("?") ? "&" : "?") + "callback=" + cb + "&_=" + Date.now();
+  document.body.appendChild(s);
+}
+
+function paintLive(){
+  const el = $("live");
+  if(!URL_){ el.innerHTML = `<span class="dot"></span>未設定同步網址`; return; }
+  if(lastErr && !lastOk){ el.innerHTML = `<span class="dot err"></span>連不上後端`; return; }
+  if(!lastOk){ el.innerHTML = `<span class="dot"></span>連線中…`; return; }
+  const s = Math.round((Date.now() - lastOk) / 1000);
+  el.innerHTML = `<span class="dot ${lastErr ? "err" : "on"}"></span>`
+    + (lastErr ? "更新失敗，顯示的是上一次的資料"
+               : `${s < 8 ? "剛剛" : s + " 秒前"}更新 · 每 ${POLL_MS/1000} 秒自動重整`);
+}
+
+/* ── 畫面 ──────────────────────────────────────── */
+function weeksSeen(){
+  return [...new Set(ROWS.map(r => Number(r.week)).filter(n => n > 0))].sort((a,b) => a-b);
+}
+function activeWeek(){
+  if(WEEK != null) return WEEK;
+  // 自動：挑最近有人動過的那一週
+  let best = null, bt = -1;
+  for(const r of ROWS) if(r.ts > bt){ bt = r.ts; best = Number(r.week); }
+  return best;
+}
+function rowFor(sid, week){
+  return ROWS.find(r => r.sid === sid && Number(r.week) === week) || null;
+}
+function pillOf(s){
+  if(!s) return `<span class="pill open">–</span>`;
+  if(s.done) return `<span class="pill done">攻克</span>`;
+  if((s.tries||0) >= 3) return `<span class="pill stuck">卡住</span>`;
+  if((s.streak||0) > 0) return `<span class="pill mid">${s.streak}/2</span>`;
+  if((s.tries||0) > 0) return `<span class="pill open">練過</span>`;
+  return `<span class="pill open">未練</span>`;
+}
+
+function render(){
+  paintLive();
+  const weeks = weeksSeen();
+  const wk = activeWeek();
+
+  const wc = $("weekChips"); wc.innerHTML = "";
+  if(!weeks.length){
+    wc.innerHTML = `<span class="empty">還沒有任何學生的資料。請學生打開刷題頁並作答一題。</span>`;
+  } else {
+    const auto = document.createElement("button");
+    auto.className = "chip" + (WEEK == null ? " on" : "");
+    auto.textContent = "自動追最新";
+    auto.onclick = () => { WEEK = null; render(); };
+    wc.appendChild(auto);
+    for(const w of weeks){
+      const c = document.createElement("button");
+      c.className = "chip" + (WEEK === w ? " on" : "");
+      c.textContent = "第 " + w + " 週";
+      c.onclick = () => { WEEK = w; render(); };
+      wc.appendChild(c);
+    }
+  }
+  $("weekNote").textContent = wk ? `目前顯示第 ${wk} 週。兩位學生的第 ${wk} 週是同一組 10 題，所以可以逐題對照。` : "";
+
+  // ── 兩欄 ──
+  const cols = $("cols"); cols.innerHTML = "";
+  for(const [sid, fallback] of STUDENTS){
+    const r = wk ? rowFor(sid, wk) : null;
+    const d = document.createElement("div");
+    d.className = "card stu";
+    if(!r){
+      d.innerHTML = `<h3>${esc(fallback)}</h3><div class="meta">第 ${wk || "?"} 週還沒有資料</div>
+        <div class="empty">這位學生還沒開始，或還沒進到這一週。</div>`;
+      cols.appendChild(d); continue;
+    }
+    const pct = r.total ? Math.round(r.done / r.total * 100) : 0;
+    const acc = r.answered ? Math.round(r.correct / r.answered * 100) : null;
+    const age = Date.now() - (r.ts || 0);
+    const stale = age > STALE_MS;
+    d.innerHTML =
+      `<h3>${esc(r.name || fallback)}</h3>
+       <div class="meta">第 ${r.week} 週 · 已練 ${r.round} 輪 · ${stale ? Math.round(age/60000) + " 分鐘前" : "作答中"}</div>
+       <div class="bar"><i style="width:${pct}%"></i></div>
+       <div class="meta">攻克 ${r.done} / ${r.total} 個考點（${pct}%）</div>
+       <div class="kpi">
+         <div><b>${r.round}</b><span>輪數</span></div>
+         <div><b>${r.done}/${r.total}</b><span>攻克</span></div>
+         <div><b>${acc == null ? "–" : acc + "%"}</b><span>本週答對率</span></div>
+       </div>` +
+      (r.inRound && !stale
+        ? `<div class="now">正在作答：第 ${r.inRound.i} / ${r.inRound.n} 題</div>`
+        : stale ? `<div class="now stale">${Math.round(age/60000)} 分鐘沒有動作</div>` : "");
+    cols.appendChild(d);
+  }
+
+  // ── 共同弱點 ──
+  const body = $("commonBody");
+  const rA = wk ? rowFor(STUDENTS[0][0], wk) : null;
+  const rB = wk ? rowFor(STUDENTS[1][0], wk) : null;
+  if(!rA && !rB){ body.innerHTML = `<div class="empty">等兩位學生開始作答後，這裡會列出 10 個考點的逐題對照。</div>`; return; }
+
+  const base = (rA && rA.seeds.length ? rA : rB).seeds;
+  const mapB = new Map((rB ? rB.seeds : []).map(s => [s.k, s]));
+  const mapA = new Map((rA ? rA.seeds : []).map(s => [s.k, s]));
+
+  const rows = base.map((s, i) => {
+    const a = mapA.get(s.k), b = mapB.get(s.k);
+    // 「共同弱點」＝兩個人都『練過』且都『沒攻克』。
+    // ⚠️ 不能寫成 (!a || !a.done) —— 那會把「另一位還沒開始」也算成共同弱點。
+    //    沒作答是「未知」，不是「弱」。少了 tries>0 這個條件，開課第一分鐘
+    //    整張表會全部標紅，老師被誤導去講其實沒人卡住的考點。
+    const bothOpen = !!a && !!b && !a.done && !b.done && a.tries > 0 && b.tries > 0;
+    return {i, k: s.k, sub: s.sub, stem: s.stem, a, b, bothOpen};
+  });
+  const nBoth = rows.filter(r => r.bothOpen).length;
+
+  body.innerHTML =
+    `<div class="note" style="margin:0 0 10px">` +
+      (nBoth ? `<b style="color:var(--bad)">${nBoth} 個考點兩個人都還沒攻克</b>（下方紅底），優先在課堂上講。`
+             : `目前沒有「兩人都卡住」的考點。`) +
+    `</div>
+     <table><thead><tr>
+       <th style="width:26px">#</th><th style="width:74px">題型</th><th>考點</th>
+       <th style="width:64px">${esc((rA && rA.name) || STUDENTS[0][1])}</th>
+       <th style="width:64px">${esc((rB && rB.name) || STUDENTS[1][1])}</th>
+     </tr></thead><tbody>` +
+     rows.map(r =>
+       `<tr class="${r.bothOpen ? "both" : ""}">
+          <td>${r.i + 1}</td><td>${esc(r.sub)}</td>
+          <td class="k" title="${esc(r.stem)}">${esc(r.stem)}…</td>
+          <td>${pillOf(r.a)}</td><td>${pillOf(r.b)}</td>
+        </tr>`).join("") +
+     `</tbody></table>`;
+}
+
+/* ── 啟動 ──────────────────────────────────────── */
+$("btnSave").onclick = () => {
+  const v = $("urlIn").value.trim();
+  if(!v) return;
+  localStorage.setItem(LS_URL, v); URL_ = v;
+  $("setup").classList.add("hidden");
+  lastOk = 0; lastErr = false; pull();
+};
+$("btnClear").onclick = () => { localStorage.removeItem(LS_URL); URL_ = CFG_URL; $("urlIn").value = ""; render(); };
+
+(async () => {
+  try{
+    const c = await fetch("config.json", {cache:"no-store"}).then(r => r.json());
+    CFG_URL = (c.SYNC_URL || "").trim();
+    if(Array.isArray(c.STUDENTS) && c.STUDENTS.length >= 2) STUDENTS = c.STUDENTS;
+  }catch(e){ /* 沒有 config.json 就用預設，等使用者手動貼網址 */ }
+  if(!URL_) URL_ = CFG_URL;
+  if(!URL_) $("setup").classList.remove("hidden");
+  else $("urlIn").value = URL_;
+  render();
+  pull();
+  setInterval(pull, POLL_MS);
+  setInterval(paintLive, 1000);
+})();
+</script>
+</body>
+</html>

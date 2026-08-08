@@ -1,0 +1,16 @@
+{
+  "_說明": "改完這個檔，網頁重新整理就會生效（用 no-store 讀取，不會被瀏覽器快取）。",
+  "_SYNC_URL": "Apps Script 部署後的 /exec 網址。留空 = 單機模式，老師端看不到進度。",
+  "SYNC_URL": "https://script.google.com/macros/s/AKfycbw45rzZISryscHZeGaui3V78RTYx5DRU5F2vnuaA9WPKSdnRBg6i_MNyTRtd5JpY7Yi9w/exec",
+  "_STUDENTS": "代號 A/B 是進度的儲存鍵，改名字可以，別改代號（改了等於換人、進度歸零）。",
+  "STUDENTS": [
+    [
+      "A",
+      "蔡孟成"
+    ],
+    [
+      "B",
+      "蔡孟甫"
+    ]
+  ]
+}
