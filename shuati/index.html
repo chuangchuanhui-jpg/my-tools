@@ -60,27 +60,36 @@ button.ghost:active{background:var(--chip)}
 .hs b{display:block; font-size:19px; font-weight:800; line-height:1.25}
 .hs span{font-size:11.5px; color:var(--sub)}
 
-/* ── 週卡 ── */
-.week{display:flex; align-items:center; gap:13px; width:100%; text-align:left;
-  background:var(--card); border:0; border-left:5px solid var(--wc);
-  border-radius:14px; padding:13px 14px; margin-bottom:10px; cursor:pointer;
-  box-shadow:var(--shadow); transition:transform .12s}
-.week:active{transform:scale(.988)}
-.week .no{flex:0 0 42px; height:42px; border-radius:13px; background:var(--wc);
-  color:#fff; display:flex; flex-direction:column; align-items:center; justify-content:center;
-  font-weight:800; line-height:1}
-.week .no small{font-size:9.5px; font-weight:600; opacity:.85}
-.week .no b{font-size:17px}
-.week .mid{flex:1; min-width:0}
-.week .ttl{font-weight:700; font-size:15.5px; margin-bottom:5px;
-  white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+/* ── 當前週大卡 ── */
 .bar{height:7px; background:var(--chip); border-radius:99px; overflow:hidden}
-.bar i{display:block; height:100%; background:var(--wc); border-radius:99px;
+.bar i{display:block; height:100%; background:var(--wc,var(--accent)); border-radius:99px;
   transition:width .5s cubic-bezier(.2,.9,.3,1)}
-.week .meta{font-size:11.5px; color:var(--sub); margin-top:5px}
-.week .meta .warn{color:var(--bad); font-weight:700}
-.week .go{flex:0 0 auto; color:var(--sub); font-size:19px}
-.week.done .no{background:var(--ok)}
+.cur{border-top:5px solid var(--wc)}
+.cur .lab{font-size:12px; font-weight:700; color:var(--wc); letter-spacing:.1em}
+.cur .no{font-size:27px; font-weight:800; margin:2px 0 1px; line-height:1.2}
+.cur .no small{font-size:14px; color:var(--sub); font-weight:700; margin-left:7px}
+.cur .ttl{font-size:15px; color:var(--sub); margin-bottom:11px}
+.cur .meta{font-size:12.5px; color:var(--sub); margin-top:7px}
+.cur .meta .warn{color:var(--bad); font-weight:700}
+
+/* ── 20 週地圖 ── */
+.stagerow{margin-bottom:12px}
+.stagerow .sh{display:flex; align-items:baseline; gap:7px; margin-bottom:6px}
+.stagerow .sh b{font-size:13px; font-weight:800; color:var(--wc)}
+.stagerow .sh span{font-size:12px; color:var(--sub); min-width:0;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.wgrid{display:flex; gap:6px; flex-wrap:wrap}
+.wtile{position:relative; width:42px; height:42px; border-radius:11px; border:1.8px solid var(--line);
+  background:var(--card); color:var(--sub); font-weight:800; font-size:14px; cursor:pointer;
+  display:flex; align-items:center; justify-content:center; overflow:hidden; padding:0}
+.wtile i{position:absolute; left:0; bottom:0; width:100%; background:var(--wc);
+  opacity:.22; transition:height .5s cubic-bezier(.2,.9,.3,1)}
+.wtile span{position:relative}
+.wtile.now{border-color:var(--wc); color:var(--wc); box-shadow:0 0 0 3px color-mix(in srgb,var(--wc) 22%,transparent)}
+.wtile.done{background:var(--wc); border-color:var(--wc); color:#fff}
+.wtile.done i{opacity:0}
+.wtile em{position:absolute; top:-2px; right:-2px; width:9px; height:9px; border-radius:50%;
+  background:var(--bad); border:2px solid var(--card)}
 
 /* ── 作答 ── */
 .qbar{display:flex; justify-content:space-between; align-items:center;
@@ -202,11 +211,23 @@ textarea{width:100%; min-height:74px; border:1px solid var(--line); border-radiu
         <div class="hs"><b id="hsQueue">0</b><span>待克服考點</span></div>
       </div>
     </div>
-    <button class="big" id="btnGo">開始今天的 10 題</button>
     <button class="big red hidden" id="btnDrill">先攻克 <span id="drillN"></span> 個錯過的考點</button>
   </div>
 
-  <div id="weekList"></div>
+  <div class="card cur" id="curCard">
+    <div class="lab" id="curLab"></div>
+    <div class="no" id="curNo"></div>
+    <div class="ttl" id="curTtl"></div>
+    <div class="bar"><i id="curBar" style="width:0"></i></div>
+    <div class="meta" id="curMeta"></div>
+    <button class="big" id="btnGo">開始這一週的 10 題</button>
+  </div>
+
+  <div class="card">
+    <h2>20 週地圖</h2>
+    <div id="weekMap"></div>
+    <div class="note" id="mapNote"></div>
+  </div>
 
   <div class="card">
     <h2>設定與備份</h2>
@@ -310,7 +331,8 @@ textarea{width:100%; min-height:74px; border:1px solid var(--line); border-radiu
 "use strict";
 const LS_KEY = "guowen_shuati_v2";
 const ROUND_N = 10, MAX_REDO_PER_ROUND = 5;
-const WCOLOR = {1:"var(--w1)",2:"var(--w2)",3:"var(--w3)",4:"var(--w4)",5:"var(--w5)",6:"var(--w6)"};
+// 顏色照「階段」給（6 個階段），不是照週——20 週用 20 個顏色會變花。
+const SCOLOR = {1:"var(--w1)",2:"var(--w2)",3:"var(--w3)",4:"var(--w4)",5:"var(--w5)",6:"var(--w6)"};
 
 let DB = null, IDX = null, ST = null, RUN = null;
 let TEACH = null;               // 老師頁正在看的資料（預設是本機的 ST）
@@ -348,6 +370,15 @@ function buildIndex(){
   }
 }
 const WEEKS = () => Object.keys(DB.weeks).map(Number).sort((a,b)=>a-b);
+const WINFO = w => DB.weeks[w] || DB.weeks[String(w)] || {stage:1, title:"", idx:1, of:1};
+// 目前該練哪一週＝第一個還沒練完的週。學生不必自己記進度到哪。
+function currentWeek(st){
+  for(const w of WEEKS()){
+    const s = weekStat(st, w);
+    if(s.total && s.done < s.total) return w;
+  }
+  return WEEKS()[WEEKS().length-1] || 1;
+}
 function seen(k){ return !!ST.q[k]; }
 function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
 
@@ -544,27 +575,47 @@ function renderHome(){
   $("hsStreak").textContent = dayStreak(ST);
   $("hsQueue").textContent = ST.queue.length;
 
-  const box = $("weekList"); box.innerHTML = "";
-  for(const w of WEEKS()){
-    const s = weekStat(ST, w);
-    const done = s.total && s.done >= s.total;
-    const b = document.createElement("button");
-    b.className = "week" + (done ? " done" : "");
-    b.style.setProperty("--wc", WCOLOR[w] || "var(--accent)");
-    b.innerHTML =
-      `<span class="no"><small>第</small><b>${w}</b></span>
-       <span class="mid">
-         <span class="ttl">${esc(DB.weeks[w])}</span>
-         <span class="bar"><i style="width:${s.total ? Math.round(100*s.done/s.total) : 0}%"></i></span>
-         <span class="meta">${s.done} / ${s.total} 題${s.pct===null ? "" : `　正確率 ${s.pct}%`}${
-             s.due ? `　<span class="warn">${s.due} 題待克服</span>` : ""}</span>
-       </span>
-       <span class="go">${done ? "✓" : "›"}</span>`;
-    b.onclick = () => { ST.week = w; saveState(); startRound(false); };
-    box.appendChild(b);
-  }
-  const cur = ST.week || 1;
+  // ── 當前這一週（首頁主角）──
+  const cur = ST.week || currentWeek(ST);
+  ST.week = cur;
+  const ci = WINFO(cur), cs = weekStat(ST, cur), ccol = SCOLOR[ci.stage] || "var(--accent)";
+  const card = $("curCard");
+  card.style.setProperty("--wc", ccol);
+  $("curLab").textContent = `階段 ${ci.stage}・${ci.idx} / ${ci.of} 週`;
+  $("curNo").innerHTML = `第 ${cur} 週 <small>／ 共 ${WEEKS().length} 週</small>`;
+  $("curTtl").textContent = ci.title;
+  $("curBar").style.width = (cs.total ? Math.round(100*cs.done/cs.total) : 0) + "%";
+  $("curMeta").innerHTML = `${cs.done} / ${cs.total} 題${cs.pct===null ? "" : `　正確率 ${cs.pct}%`}` +
+    (cs.due ? `　<span class="warn">${cs.due} 題待克服</span>` : "");
   $("btnGo").textContent = `開始第 ${cur} 週的 10 題`;
+
+  // ── 20 週地圖：依階段分列，每格一週 ──
+  const map = $("weekMap"); map.innerHTML = "";
+  const byStage = {};
+  for(const w of WEEKS()) (byStage[WINFO(w).stage] ||= []).push(w);
+  for(const s of Object.keys(byStage).map(Number).sort((a,b)=>a-b)){
+    const col = SCOLOR[s] || "var(--accent)";
+    const row = document.createElement("div");
+    row.className = "stagerow"; row.style.setProperty("--wc", col);
+    const tiles = byStage[s].map(w => {
+      const st = weekStat(ST, w);
+      const pctW = st.total ? Math.round(100*st.done/st.total) : 0;
+      const done = st.total && st.done >= st.total;
+      return `<button class="wtile ${done?"done":""} ${w===cur?"now":""}" data-w="${w}"
+        title="第 ${w} 週：${st.done}/${st.total} 題">
+        <i style="height:${done?0:pctW}%"></i><span>${w}</span>${st.due?'<em></em>':''}</button>`;
+    }).join("");
+    row.innerHTML = `<div class="sh"><b>階段 ${s}</b><span>${esc(DB.stages[s]||"")}</span></div>
+                     <div class="wgrid">${tiles}</div>`;
+    map.appendChild(row);
+  }
+  map.querySelectorAll(".wtile").forEach(b => {
+    b.onclick = () => { ST.week = +b.dataset.w; saveState(); renderHome(); };
+  });
+  const doneW = WEEKS().filter(w => { const s = weekStat(ST, w); return s.total && s.done >= s.total; }).length;
+  $("mapNote").innerHTML = `已完成 ${doneW} / ${WEEKS().length} 週。` +
+    `每週約 ${Math.round(IDX.bank.length / WEEKS().length)} 題（4~5 回，一天一回剛好一週）。` +
+    `點任一週可以直接跳過去練。<em style="color:var(--bad)">●</em> 表示那一週有待克服的錯題。`;
   $("btnDrill").classList.toggle("hidden", !ST.queue.length);
   $("drillN").textContent = ST.queue.length;
   document.querySelectorAll("input[name=need]").forEach(r => {
