@@ -309,6 +309,12 @@ textarea{width:100%; min-height:74px; border:1px solid var(--line); border-radiu
     <div id="tByWeek"></div>
   </div>
   <div class="card">
+    <h2>課表：每週題型配比</h2>
+    <div id="tPlan" style="overflow-x:auto"></div>
+    <div class="note">每一週都有全部九種題型，難度逐週上升（用閱讀量與文言密度估的，
+      不是實測難度；等學生累積夠多首答資料就能用真實答對率重排）。</div>
+  </div>
+  <div class="card">
     <h2>反覆答錯的題目</h2>
     <div id="tHardQ"></div>
   </div>
@@ -331,8 +337,9 @@ textarea{width:100%; min-height:74px; border:1px solid var(--line); border-radiu
 "use strict";
 const LS_KEY = "guowen_shuati_v2";
 const ROUND_N = 10, MAX_REDO_PER_ROUND = 5;
-// 顏色照「階段」給（6 個階段），不是照週——20 週用 20 個顏色會變花。
-const SCOLOR = {1:"var(--w1)",2:"var(--w2)",3:"var(--w3)",4:"var(--w4)",5:"var(--w5)",6:"var(--w6)"};
+// 顏色照「難度階段」給（入門→挑戰四段），不是照週——20 週用 20 個顏色會變花。
+const PCOLOR = {"入門":"var(--w3)", "基礎":"var(--w1)", "進階":"var(--w4)", "挑戰":"var(--w5)"};
+const PHASE_ORDER = ["入門","基礎","進階","挑戰"];
 
 let DB = null, IDX = null, ST = null, RUN = null;
 let TEACH = null;               // 老師頁正在看的資料（預設是本機的 ST）
@@ -370,7 +377,7 @@ function buildIndex(){
   }
 }
 const WEEKS = () => Object.keys(DB.weeks).map(Number).sort((a,b)=>a-b);
-const WINFO = w => DB.weeks[w] || DB.weeks[String(w)] || {stage:1, title:"", idx:1, of:1};
+const WINFO = w => DB.weeks[w] || DB.weeks[String(w)] || {phase:"入門", n:0, mix:{}};
 // 目前該練哪一週＝第一個還沒練完的週。學生不必自己記進度到哪。
 function currentWeek(st){
   for(const w of WEEKS()){
@@ -578,12 +585,12 @@ function renderHome(){
   // ── 當前這一週（首頁主角）──
   const cur = ST.week || currentWeek(ST);
   ST.week = cur;
-  const ci = WINFO(cur), cs = weekStat(ST, cur), ccol = SCOLOR[ci.stage] || "var(--accent)";
+  const ci = WINFO(cur), cs = weekStat(ST, cur), ccol = PCOLOR[ci.phase] || "var(--accent)";
   const card = $("curCard");
   card.style.setProperty("--wc", ccol);
-  $("curLab").textContent = `階段 ${ci.stage}・${ci.idx} / ${ci.of} 週`;
+  $("curLab").textContent = `${ci.phase}階段`;
   $("curNo").innerHTML = `第 ${cur} 週 <small>／ 共 ${WEEKS().length} 週</small>`;
-  $("curTtl").textContent = ci.title;
+  $("curTtl").textContent = "每週都練九種題型，題目一週比一週難";
   $("curBar").style.width = (cs.total ? Math.round(100*cs.done/cs.total) : 0) + "%";
   $("curMeta").innerHTML = `${cs.done} / ${cs.total} 題${cs.pct===null ? "" : `　正確率 ${cs.pct}%`}` +
     (cs.due ? `　<span class="warn">${cs.due} 題待克服</span>` : "");
@@ -591,13 +598,12 @@ function renderHome(){
 
   // ── 20 週地圖：依階段分列，每格一週 ──
   const map = $("weekMap"); map.innerHTML = "";
-  const byStage = {};
-  for(const w of WEEKS()) (byStage[WINFO(w).stage] ||= []).push(w);
-  for(const s of Object.keys(byStage).map(Number).sort((a,b)=>a-b)){
-    const col = SCOLOR[s] || "var(--accent)";
+  const byPhase = {};
+  for(const w of WEEKS()) (byPhase[WINFO(w).phase] ||= []).push(w);
+  for(const ph of PHASE_ORDER.filter(p => byPhase[p])){
     const row = document.createElement("div");
-    row.className = "stagerow"; row.style.setProperty("--wc", col);
-    const tiles = byStage[s].map(w => {
+    row.className = "stagerow"; row.style.setProperty("--wc", PCOLOR[ph] || "var(--accent)");
+    const tiles = byPhase[ph].map(w => {
       const st = weekStat(ST, w);
       const pctW = st.total ? Math.round(100*st.done/st.total) : 0;
       const done = st.total && st.done >= st.total;
@@ -605,8 +611,8 @@ function renderHome(){
         title="第 ${w} 週：${st.done}/${st.total} 題">
         <i style="height:${done?0:pctW}%"></i><span>${w}</span>${st.due?'<em></em>':''}</button>`;
     }).join("");
-    row.innerHTML = `<div class="sh"><b>階段 ${s}</b><span>${esc(DB.stages[s]||"")}</span></div>
-                     <div class="wgrid">${tiles}</div>`;
+    row.innerHTML = `<div class="sh"><b>${esc(ph)}</b><span>第 ${byPhase[ph][0]}–${
+      byPhase[ph][byPhase[ph].length-1]} 週</span></div><div class="wgrid">${tiles}</div>`;
     map.appendChild(row);
   }
   map.querySelectorAll(".wtile").forEach(b => {
@@ -614,8 +620,9 @@ function renderHome(){
   });
   const doneW = WEEKS().filter(w => { const s = weekStat(ST, w); return s.total && s.done >= s.total; }).length;
   $("mapNote").innerHTML = `已完成 ${doneW} / ${WEEKS().length} 週。` +
-    `每週約 ${Math.round(IDX.bank.length / WEEKS().length)} 題（4~5 回，一天一回剛好一週）。` +
-    `點任一週可以直接跳過去練。<em style="color:var(--bad)">●</em> 表示那一週有待克服的錯題。`;
+    `每週約 ${Math.round(IDX.bank.length / WEEKS().length)} 題（4~5 回，一天一回剛好一週），` +
+    `九種題型每週都有，題目一週比一週難。` +
+    `點任一週可以直接跳過去練。<em style="color:var(--bad);position:static;display:inline-block;width:8px;height:8px;border:0;vertical-align:middle"></em> 表示那一週有待克服的錯題。`;
   $("btnDrill").classList.toggle("hidden", !ST.queue.length);
   $("drillN").textContent = ST.queue.length;
   document.querySelectorAll("input[name=need]").forEach(r => {
@@ -815,7 +822,23 @@ function renderTeach(st){
   $("tByPoint").innerHTML = rowsHTML(groupRows(st, e => e.p, null, 2),
     "還沒有考點層級的資料（考點標籤會隨變形題增加而變多）。");
   $("tByWeek").innerHTML = rowsHTML(
-    groupRows(st, e => e.w, k => `第 ${k} 週 ${DB.weeks[k]||""}`, 1), "還沒有資料。");
+    groupRows(st, e => e.w, k => `第 ${k} 週（${WINFO(+k).phase}）`, 1), "還沒有資料。");
+
+  // 課表：每週題型配比一覽（老師排進度用）
+  const SUBS = ["字音","字形","字義","詞語運用","成語俗諺","標點符號","白話閱讀","文言閱讀","寫作手法"];
+  $("tPlan").innerHTML =
+    `<table style="border-collapse:collapse; font-size:12.5px; white-space:nowrap">
+      <tr><th style="text-align:left;padding:4px 7px">週</th><th style="padding:4px 5px">階段</th>
+      <th style="padding:4px 5px">總</th>${SUBS.map(s =>
+        `<th style="padding:4px 5px;font-weight:600;color:var(--sub)">${esc(s.slice(0,2))}</th>`).join("")}</tr>` +
+    WEEKS().map(w => { const i = WINFO(w), cw = w === (ST.week||1);
+      return `<tr style="border-top:1px solid var(--line)${cw?";font-weight:800":""}">
+        <td style="padding:4px 7px">${w}</td>
+        <td style="padding:4px 5px;color:${PCOLOR[i.phase]}">${esc(i.phase)}</td>
+        <td style="padding:4px 5px">${i.n}</td>${SUBS.map(s =>
+          `<td style="padding:4px 5px;text-align:center;color:${
+            (i.mix||{})[s] ? "inherit" : "var(--line)"}">${(i.mix||{})[s]||"·"}</td>`).join("")}</tr>`;
+    }).join("") + `</table>`;
 
   // 反覆答錯：同一題錯 ≥2 次
   const cnt = {};
