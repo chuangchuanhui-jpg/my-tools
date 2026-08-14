@@ -221,6 +221,17 @@ textarea{width:100%; min-height:74px; border:1px solid var(--line); border-radiu
     <div class="bar"><i id="curBar" style="width:0"></i></div>
     <div class="meta" id="curMeta"></div>
     <button class="big" id="btnGo">開始這一週的 10 題</button>
+    <button class="big hidden" id="btnReport" style="background:linear-gradient(135deg,#26c88a,var(--ok)); box-shadow:0 6px 16px rgba(15,157,106,.28)">
+      交出第 <span id="repN"></span> 週報告</button>
+  </div>
+  <div class="card hidden" id="reportCard">
+    <h2>第 <span id="repN2"></span> 週報告</h2>
+    <textarea id="repTa" style="min-height:230px"></textarea>
+    <div class="rowbtns" style="justify-content:flex-start; gap:8px; margin-top:9px; flex-wrap:wrap">
+      <button class="ghost" id="btnRepCopy">複製全部</button>
+      <button class="ghost" id="btnRepClose">關閉</button>
+    </div>
+    <div class="note">整段複製後用 LINE 傳給老師就好。最後那串是給老師匯入看詳細分析用的，不用管它。</div>
   </div>
 
   <div class="card">
@@ -595,6 +606,17 @@ function renderHome(){
   $("curMeta").innerHTML = `${cs.done} / ${cs.total} 題${cs.pct===null ? "" : `　正確率 ${cs.pct}%`}` +
     (cs.due ? `　<span class="warn">${cs.due} 題待克服</span>` : "");
   $("btnGo").textContent = `開始第 ${cur} 週的 10 題`;
+  // 有練過的週就能交報告；整週練完會特別提示
+  const anyDone = WEEKS().filter(w => weekStat(ST, w).done > 0);
+  const repW = anyDone.length ? anyDone[anyDone.length-1] : 0;
+  $("btnReport").classList.toggle("hidden", !repW);
+  if(repW){
+    const rs = weekStat(ST, repW);
+    $("repN").textContent = repW;
+    $("btnReport").textContent = (rs.done >= rs.total ? "✓ 第 " : "交出第 ") + repW +
+      (rs.done >= rs.total ? " 週練完了，交報告給老師" : ` 週報告（已練 ${rs.done}/${rs.total}）`);
+    $("btnReport").onclick = () => showReport(repW);
+  }
 
   // ── 20 週地圖：依階段分列，每格一週 ──
   const map = $("weekMap"); map.innerHTML = "";
@@ -858,6 +880,45 @@ function renderTeach(st){
   show("scr-teach");
 }
 
+// ── 週報告：學生刷完一週後交給老師 ─────────────────
+// 前半是人看的（LINE 傳得過去），後半附完整進度碼給老師匯入看細部分析。
+function weekReport(w){
+  const s = weekStat(ST, w), info = WINFO(w);
+  const rows = groupRows(ST, e => e.s === undefined ? null : (e.w === w ? e.s : null), null, 1);
+  const pts = ST.queue.filter(e => (IDX.byK[e.k]||{}).week === w);
+  const L = [
+    `【國文刷題・第 ${w} 週報告】`,
+    `難度階段：${info.phase}`,
+    `完成日期：${new Date().toISOString().slice(0,10)}`,
+    ``,
+    `本週 ${s.total} 題，已練 ${s.done} 題`,
+    `首答正確率：${s.pct === null ? "－" : s.pct + "%"}`,
+    `總作答次數：${ST.log.filter(e => e.w === w).length} 次（含訂正重做）`,
+    ``,
+    `各題型（只算第一次作答）：`,
+  ];
+  for(const r of rows) L.push(`　${r.label}　${r.r}/${r.n}　${r.pct}%`);
+  L.push(``);
+  if(pts.length){
+    L.push(`還沒克服的考點 ${pts.length} 個：`);
+    for(const e of pts.slice(0, 12)){
+      const q = IDX.byK[e.k];
+      L.push(`　· ${q ? (q.point || q.stem.slice(0,26) + "…") : e.k}`);
+    }
+    if(pts.length > 12) L.push(`　…等 ${pts.length} 個`);
+  } else {
+    L.push(`本週沒有還沒克服的考點。`);
+  }
+  L.push(``, `─── 以下給老師匯入，不用看 ───`, JSON.stringify(ST));
+  return L.join("\n");
+}
+function showReport(w){
+  $("repN2").textContent = w;
+  $("repTa").value = weekReport(w);
+  $("reportCard").classList.remove("hidden");
+  $("repTa").scrollIntoView({behavior:"smooth", block:"center"});
+}
+
 // ── 備份 ───────────────────────────────────────────
 function doExport(){
   $("backupBox").classList.remove("hidden");
@@ -902,6 +963,12 @@ async function boot(){
       renderTeach(Object.assign(freshState(), s));
     }catch(e){ alert("讀不到：那串不是有效的進度碼"); }
   };
+  $("btnRepCopy").onclick = () => {
+    const ta = $("repTa"); ta.select();
+    try{ document.execCommand("copy"); alert("已複製，貼到 LINE 傳給老師就好。"); }
+    catch(e){ alert("複製失敗，請手動全選複製。"); }
+  };
+  $("btnRepClose").onclick = () => $("reportCard").classList.add("hidden");
   $("btnExport").onclick = doExport;
   $("btnImport").onclick = () => { $("backupBox").classList.remove("hidden"); $("backupTa").value=""; $("backupTa").focus(); };
   $("btnDoImport").onclick = doImport;
