@@ -614,9 +614,11 @@ function renderHome(){
   $("curMeta").innerHTML = `${cs.done} / ${cs.total} 題${cs.pct===null ? "" : `　正確率 ${cs.pct}%`}` +
     (cs.due ? `　<span class="warn">${cs.due} 題待克服</span>` : "");
   $("btnGo").textContent = `開始第 ${cur} 週的 10 題`;
-  // 有練過的週就能交報告；整週練完會特別提示
-  const anyDone = WEEKS().filter(w => weekStat(ST, w).done > 0);
-  const repW = anyDone.length ? anyDone[anyDone.length-1] : 0;
+  // 交報告的目標週＝學生最近實際在練的週（log 的 sw）。
+  // 不能挑「有首答紀錄的最大週」：錯題重做會抽到別週的兄弟題，
+  // 一題就會把報告指到根本還沒練的週，送出去幾乎是空的。
+  const lastLog = ST.log[ST.log.length - 1];
+  const repW = lastLog ? (lastLog.sw || lastLog.w || ST.week) : 0;
   $("btnReport").classList.toggle("hidden", !repW);
   $("repHint").classList.toggle("hidden", !repW);
   if(repW){
