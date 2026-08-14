@@ -223,6 +223,10 @@ textarea{width:100%; min-height:74px; border:1px solid var(--line); border-radiu
     <button class="big" id="btnGo">開始這一週的 10 題</button>
     <button class="big hidden" id="btnReport" style="background:linear-gradient(135deg,#26c88a,var(--ok)); box-shadow:0 6px 16px rgba(15,157,106,.28)">
       交出第 <span id="repN"></span> 週報告</button>
+    <div class="note hidden" id="repHint" style="text-align:center">
+      按下去會跳出分享，選 LINE 傳給老師就完成了。
+      <a class="flag" id="btnRepText">或先看看要傳什麼</a>
+    </div>
   </div>
   <div class="card hidden" id="reportCard">
     <h2>第 <span id="repN2"></span> 週報告</h2>
@@ -374,9 +378,10 @@ function saveState(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(ST)); }ca
 
 // ── 索引 ───────────────────────────────────────────
 function buildIndex(){
-  IDX = {byK:{}, variants:{}, suppsByPg:{}, bank:[], bySub:{}, byPoint:{}, byWeek:{}};
+  IDX = {byK:{}, byK8:{}, variants:{}, suppsByPg:{}, bank:[], bySub:{}, byPoint:{}, byWeek:{}};
   for(const q of DB.questions){
     IDX.byK[q.k] = q;
+    IDX.byK8[q.k.slice(0,8)] = q;      // 成績碼用 8 碼；884 題內實測唯一
     if(q.point) (IDX.byPoint[q.point] ||= []).push(q);
     if(q.tag === "variant"){ (IDX.variants[q.variant_of] ||= []).push(q); }
     else if(q.tag === "supp"){ (IDX.suppsByPg[q.pg] ||= []).push(q); }
@@ -444,8 +449,11 @@ function grade(item, choice){
   rec.last = ++ST.answered; ok ? rec.r++ : rec.w++;
   if(rec.first === null) rec.first = ok;      // 首答一經寫入就不再改（重做無法洗白）
   if(ok) ST.correct++;
-  ST.log.push({k:q.k, w:q.week, s:q.sub, sk:q.skill||"", p:q.point||"",
-               a:choice||"", o:ok?1:0, t:Date.now()});
+  // w＝題目屬於哪一週（算週進度用）；sw＝學生是在練哪一週時做的（交作業用）。
+  // ⚠️ 兩者會不一樣：第 1 週的錯題再挑戰可能抽到變形題（week=0）或別週的兄弟題，
+  //    那些也是第 1 週的練習成果。只用 w 收會漏掉（實測第 1 週漏 3~8 題）。
+  ST.log.push({k:q.k, w:q.week, sw:ST.week || q.week, s:q.sub, sk:q.skill||"",
+               p:q.point||"", a:choice||"", o:ok?1:0, t:Date.now()});
   if(ST.log.length > 4000) ST.log.splice(0, ST.log.length - 4000);
   const today = new Date().toISOString().slice(0,10);
   if(ST.days[ST.days.length-1] !== today) ST.days.push(today);
@@ -610,12 +618,14 @@ function renderHome(){
   const anyDone = WEEKS().filter(w => weekStat(ST, w).done > 0);
   const repW = anyDone.length ? anyDone[anyDone.length-1] : 0;
   $("btnReport").classList.toggle("hidden", !repW);
+  $("repHint").classList.toggle("hidden", !repW);
   if(repW){
     const rs = weekStat(ST, repW);
     $("repN").textContent = repW;
-    $("btnReport").textContent = (rs.done >= rs.total ? "✓ 第 " : "交出第 ") + repW +
-      (rs.done >= rs.total ? " 週練完了，交報告給老師" : ` 週報告（已練 ${rs.done}/${rs.total}）`);
-    $("btnReport").onclick = () => showReport(repW);
+    $("btnReport").textContent = (rs.done >= rs.total ? "✓ 第 " : "傳第 ") + repW +
+      (rs.done >= rs.total ? " 週練完了，傳給老師" : ` 週進度給老師（${rs.done}/${rs.total}）`);
+    $("btnReport").onclick = () => sendReport(repW);
+    $("btnRepText").onclick = () => showReport(repW);
   }
 
   // ── 20 週地圖：依階段分列，每格一週 ──
@@ -880,22 +890,83 @@ function renderTeach(st){
   show("scr-teach");
 }
 
+// ── 交作業：把一週成績壓成一小段碼，一鍵傳給老師 ──
+// ⚠️ 只傳「題目編號＋首答對錯＋答對/答錯次數」。題型、考點、週次都能用編號
+//    回題庫查，不必傳 ⇒ 11 KB 壓到 0.6 KB，才塞得進 LINE 的分享連結。
+//    k 取前 8 碼：實測 884 題全部唯一（見 harness 的唯一性測試）。
+const CODE_VER = "GW1";
+const B36 = n => Math.min(35, n | 0).toString(36);
+
+function packWeek(w){
+  const rows = [], done = new Set();
+  // 收「在這一週練過的每一題」，含錯題再挑戰時抽到的變形題與兄弟題
+  for(const e of ST.log){
+    if((e.sw ?? e.w) !== w || done.has(e.k)) continue;
+    done.add(e.k);
+    const rec = ST.q[e.k];
+    if(!rec) continue;
+    rows.push(e.k.slice(0,8) + (rec.first ? "1" : "0") + B36(rec.r) + B36(rec.w));
+  }
+  const queue = ST.queue.filter(e => done.has(e.k) ||
+                                     (IDX.byK[e.k]||{}).week === w)
+                        .map(e => e.k.slice(0,8)).join("");
+  return [CODE_VER, w, new Date().toISOString().slice(0,10).replace(/-/g,""),
+          rows.join(""), queue].join("|");
+}
+// 老師端：把碼還原成一份「假的進度」，讓既有的統計函式原封不動可以吃
+function unpackWeek(code){
+  const p = String(code).trim().split("|");
+  if(p[0] !== CODE_VER || p.length < 4) return null;
+  const week = +p[1], log = [], q = {}, queue = [];
+  const body = p[3] || "";
+  for(let i = 0; i + 11 <= body.length; i += 11){
+    const k8 = body.slice(i, i+8);
+    const full = IDX.byK8[k8];
+    if(!full) continue;                       // 題庫更新後找不到的題就跳過
+    const first = body[i+8] === "1";
+    const r = parseInt(body[i+9], 36), w = parseInt(body[i+10], 36);
+    q[full.k] = {r, w, last:0, first};
+    // 重建作答序：第一筆＝首答，其餘補足對/錯次數，這樣既有統計不用改
+    const seq = [first];
+    for(let j = 0; j < w - (first ? 0 : 1); j++) seq.push(false);
+    for(let j = 0; j < r - (first ? 1 : 0); j++) seq.push(true);
+    for(const ok of seq)
+      log.push({k:full.k, w:full.week, sw:week, s:full.sub, sk:full.skill||"",
+                p:full.point||"", a:"", o:ok?1:0, t:0});
+  }
+  const qs = p[4] || "";
+  for(let i = 0; i + 8 <= qs.length; i += 8){
+    const full = IDX.byK8[qs.slice(i, i+8)];
+    if(full) queue.push({k:full.k, streak:0, used:[], added:0});
+  }
+  return Object.assign(freshState(), {week, q, log, queue,
+    answered: log.length, correct: log.filter(e => e.o).length});
+}
+
 // ── 週報告：學生刷完一週後交給老師 ─────────────────
 // 前半是人看的（LINE 傳得過去），後半附完整進度碼給老師匯入看細部分析。
 function weekReport(w){
   const s = weekStat(ST, w), info = WINFO(w);
-  const rows = groupRows(ST, e => e.s === undefined ? null : (e.w === w ? e.s : null), null, 1);
+  const rows = groupRows(ST, e => ((e.sw ?? e.w) === w ? e.s : null), null, 1);
   const pts = ST.queue.filter(e => (IDX.byK[e.k]||{}).week === w);
+  // 兩個數字要分清楚，否則老師會覺得對不起來：
+  //   done  ＝ 課表上這一週的題做了幾題（進度）
+  //   extra ＝ 錯題再挑戰時額外做到的變形題／兄弟題（不在本週課表上）
+  const inWeek = new Set(ST.log.filter(e => (e.sw ?? e.w) === w).map(e => e.k));
+  const extra = [...inWeek].filter(k => (IDX.byK[k]||{}).week !== w).length;
+  const allStat = firstStats(ST, e => (e.sw ?? e.w) === w);
   const L = [
     `【國文刷題・第 ${w} 週報告】`,
     `難度階段：${info.phase}`,
     `完成日期：${new Date().toISOString().slice(0,10)}`,
     ``,
-    `本週 ${s.total} 題，已練 ${s.done} 題`,
-    `首答正確率：${s.pct === null ? "－" : s.pct + "%"}`,
-    `總作答次數：${ST.log.filter(e => e.w === w).length} 次（含訂正重做）`,
+    `課表進度：${s.done} / ${s.total} 題` + (s.done >= s.total ? "（本週完成）" : ""),
+    `這週實際練了：${inWeek.size} 題` + (extra ? `（含訂正時多練的變形題 ${extra} 題）` : ""),
+    `首答正確率：${allStat.pct === null ? "－" : allStat.pct + "%"}`
+      + `（${allStat.r}/${allStat.n}）`,
+    `總作答次數：${ST.log.filter(e => (e.sw ?? e.w) === w).length} 次（含訂正重做）`,
     ``,
-    `各題型（只算第一次作答）：`,
+    `各題型（只算第一次作答，共 ${allStat.n} 題）：`,
   ];
   for(const r of rows) L.push(`　${r.label}　${r.r}/${r.n}　${r.pct}%`);
   L.push(``);
@@ -909,7 +980,7 @@ function weekReport(w){
   } else {
     L.push(`本週沒有還沒克服的考點。`);
   }
-  L.push(``, `─── 以下給老師匯入，不用看 ───`, JSON.stringify(ST));
+  L.push(``, `─── 成績碼（老師貼進系統看細節）───`, packWeek(w));
   return L.join("\n");
 }
 function showReport(w){
@@ -917,6 +988,27 @@ function showReport(w){
   $("repTa").value = weekReport(w);
   $("reportCard").classList.remove("hidden");
   $("repTa").scrollIntoView({behavior:"smooth", block:"center"});
+}
+
+// 一鍵傳送：手機優先用系統分享（點一下選 LINE 就送出），
+// 沒有分享功能就直接開 LINE，再不行才退回複製。
+async function sendReport(w){
+  const text = weekReport(w);
+  if(navigator.share){
+    try{ await navigator.share({title:`國文刷題 第 ${w} 週報告`, text}); return; }
+    catch(e){ if(e && e.name === "AbortError") return; }   // 使用者自己取消，不要再彈別的
+  }
+  const url = "https://line.me/R/msg/text/?" + encodeURIComponent(text);
+  const win = window.open(url, "_blank");
+  if(!win){
+    try{
+      await navigator.clipboard.writeText(text);
+      alert("已複製報告，貼到 LINE 傳給老師就好。");
+    }catch(e){
+      showReport(w);
+      alert("請手動全選下方文字複製，傳給老師。");
+    }
+  }
 }
 
 // ── 備份 ───────────────────────────────────────────
@@ -957,11 +1049,18 @@ async function boot(){
   $("btnTeachHome").onclick = () => { renderHome(); show("scr-home"); };
   $("btnLoadOther").onclick = () => { $("teachBox").classList.toggle("hidden"); };
   $("btnDoLoad").onclick = () => {
-    try{
-      const s = JSON.parse($("teachTa").value);
+    const raw = $("teachTa").value.trim();
+    // 學生傳來的整段報告裡夾著成績碼，直接貼整段也要能讀
+    const m = raw.match(/GW1\|[^\s]+/);
+    if(m){
+      const s = unpackWeek(m[0]);
+      if(s){ renderTeach(s); return; }
+    }
+    try{                                    // 舊版的完整 JSON 進度碼也照收
+      const s = JSON.parse(raw);
       if(!s || typeof s.q !== "object") throw 0;
       renderTeach(Object.assign(freshState(), s));
-    }catch(e){ alert("讀不到：那串不是有效的進度碼"); }
+    }catch(e){ alert("讀不到：貼的內容裡找不到成績碼"); }
   };
   $("btnRepCopy").onclick = () => {
     const ta = $("repTa"); ta.select();
