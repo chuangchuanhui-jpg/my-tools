@@ -221,7 +221,7 @@ function render(){
       wc.appendChild(c);
     }
   }
-  $("weekNote").textContent = wk ? `目前顯示第 ${wk} 週。兩位學生的第 ${wk} 週是同一組 10 題，所以可以逐題對照。` : "";
+  $("weekNote").textContent = wk ? `目前顯示第 ${wk} 週。兩位學生的第 ${wk} 週是同一組題，所以可以逐題對照。` : "";
 
   // ── 兩欄 ──
   const cols = $("cols"); cols.innerHTML = "";
@@ -258,7 +258,7 @@ function render(){
   const body = $("commonBody");
   const rA = wk ? rowFor(STUDENTS[0][0], wk) : null;
   const rB = wk ? rowFor(STUDENTS[1][0], wk) : null;
-  if(!rA && !rB){ body.innerHTML = `<div class="empty">等兩位學生開始作答後，這裡會列出 10 個考點的逐題對照。</div>`; return; }
+  if(!rA && !rB){ body.innerHTML = `<div class="empty">等兩位學生開始作答後，這裡會列出這一週每一題的逐題對照。</div>`; return; }
 
   const base = (rA && rA.seeds.length ? rA : rB).seeds;
   const mapB = new Map((rB ? rB.seeds : []).map(s => [s.k, s]));

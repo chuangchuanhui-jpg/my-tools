@@ -247,6 +247,11 @@ textarea{width:100%; min-height:74px; border:1px solid var(--line); border-radiu
   <div class="card">
     <h2>設定與備份</h2>
     <div style="font-size:15px; margin-bottom:11px">
+      我是：<span id="whoName" style="font-weight:700"></span>
+      <button class="ghost" id="btnWho" style="margin-left:8px; padding:5px 12px; font-size:13px">換人</button>
+      <div class="note" id="syncNote" style="margin-top:4px"></div>
+    </div>
+    <div style="font-size:15px; margin-bottom:11px">
       作答模式：
       <label><input type="radio" name="mode" value="practice">練習（馬上對答案）</label>
       <label style="margin-left:10px"><input type="radio" name="mode" value="exam">模擬考（交卷才對）</label>
@@ -359,11 +364,68 @@ const PHASE_ORDER = ["入門","基礎","進階","挑戰"];
 let DB = null, IDX = null, ST = null, RUN = null;
 let TEACH = null;               // 老師頁正在看的資料（預設是本機的 ST）
 
+// ── 老師端即時同步 ─────────────────────────────────
+// 同步網址與學生名單放在 config.json（不是 .js）。
+// ⚠️ 一定要用 fetch + cache:"no-store" 讀：<script src> 會被瀏覽器快取，
+//    改了名字或換了同步網址卻「看起來沒生效」，就是這個原因。
+// 沒有 config.json 或 SYNC_URL 留空 ⇒ 單機模式，作答完全不受影響。
+//
+// ⚠️ 2026-08-20 補回。8/14 改版時這一段被整段拿掉，於是 teacher.html（即時看板）
+//    再也收不到任何資料——GAS 上最後一筆是 2026-08-09 14:30。看板不是壞了，
+//    是學生端沒人在送。
+let SYNC_URL = "";
+let STUDENTS = [["A", "學生一"], ["B", "學生二"]];
+let syncState = "off";
+async function loadConfig(){
+  try{
+    const c = await fetch("config.json", {cache:"no-store"}).then(r => r.json());
+    SYNC_URL = (c.SYNC_URL || "").trim();
+    if(Array.isArray(c.STUDENTS) && c.STUDENTS.length >= 2) STUDENTS = c.STUDENTS;
+  }catch(e){ /* 單機模式 */ }
+}
+function sync(){
+  if(!SYNC_URL || !ST.sid){ syncState = "off"; paintSync(); return; }
+  const w = ST.week || 1, s = weekStat(ST, w);
+  // 老師端看板要的是「這一週的每一題怎麼樣」。tries/wrong 直接用累計作答次數，
+  // streak 用佇列裡的連對數；已攻克＝不在佇列、且首答有紀錄。
+  const inW = (IDX.byWeek[w] || []);
+  const seeds = inW.map(q => {
+    const rec = ST.q[q.k] || {r:0, w:0, first:null};
+    const e = ST.queue.find(x => x.k === q.k);
+    return {k:q.k, sub:q.sub, stem:(q.stem||"").slice(0,22),
+            done: !e && rec.first !== null && rec.r > 0,
+            streak: e ? (e.streak||0) : (rec.first !== null ? ST.need : 0),
+            tries: rec.r + rec.w, wrong: rec.w};
+  });
+  const body = JSON.stringify({
+    sid: ST.sid, name: ST.name, week: w, round: ST.round,
+    done: seeds.filter(x => x.done).length, total: seeds.length,
+    answered: s.done, correct: Math.round((s.pct || 0) * s.done / 100),
+    inRound: RUN ? {i: RUN.i + 1, n: RUN.items.length} : null,
+    seeds, ts: Date.now()
+  });
+  // text/plain 才不會觸發 CORS 預檢（Apps Script 不處理 OPTIONS）；
+  // no-cors ＋ fire-and-forget：送不出去也不能擋學生作答。
+  fetch(SYNC_URL, {method:"POST", mode:"no-cors", keepalive:true,
+                   headers:{"Content-Type":"text/plain;charset=utf-8"}, body})
+    .then(() => { syncState = "on"; paintSync(); })
+    .catch(() => { syncState = "err"; paintSync(); });
+}
+function paintSync(){
+  const el = document.getElementById("syncNote");
+  if(!el) return;
+  el.textContent = {off:"單機模式（老師端看不到即時進度）",
+                    on:"已同步到老師端", err:"同步失敗，作答不受影響"}[syncState];
+}
+
 // ── 狀態 ───────────────────────────────────────────
 // log 是「每一次作答」的原始紀錄，永不覆寫——這是老師端分析與防作弊的依據。
 // q[k].first 是首答對錯，一旦寫入就不再改；重做只會累加 r/w，不會洗掉 first。
+// need 預設 2：「答對 1 次」對錯題來說太寬鬆——剛看過解析馬上答對，
+// 只證明短期記得，不證明會了。舊版（2026-08-07 使用者定）就是連對 2 次才算攻克，
+// 8/14 改版時被改成 1，這裡改回來。
 function freshState(){
-  return {v:2, need:1, mode:"practice", week:1, round:0,
+  return {v:2, need:2, mode:"practice", week:1, round:0, sid:"", name:"",
           q:{}, log:[], days:[], queue:[], mastered:{}, flagged:[],
           answered:0, correct:0};
 }
@@ -406,20 +468,31 @@ function seen(k){ return !!ST.q[k]; }
 function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
 
 // ── 出題 ───────────────────────────────────────────
+// 答錯的考點要「再問一次」，順序：
+//   ① 專屬變形題（題幹不變，整批換新選項）——有寫好的才有，859 題裡 42 題
+//   ② 原題，選項洗牌（答案字母跟著換）——每一題都適用，可以無限次重來
+//
+// ⚠️ 2026-08-20 改。原本的順序是「變形題 → 同選文補充題 → 同考點題 → 同題型別題」，
+//    候選一律排除「做過的題」，而原題自己就是做過的 ⇒ **答錯的那一題永遠不會再出現**，
+//    系統改拿同題型的別的題來充當。實測第 3 週答錯 3 題，三回之後三個考點全部
+//    「過關」，但那 3 題一次都沒再出現過——過關是靠答對別的題換來的。
+//    「同考點題」「同選文補充題」也都是**不同的題**，一樣有這個問題，所以一併從
+//    再挑戰鏈裡拿掉：要判定「他這一題會了」，就得在這一題上答對。
+//    遷移練習不是不重要，但那是「新題」該做的事，不該拿來抵免錯題。
+function shuffledClone(q){
+  const idx = shuffle([0,1,2,3]);
+  const opts = idx.map(i => q.opts[i]);
+  const ansOld = "ABCD".indexOf(q.ans);
+  const ans = "ABCD"[idx.indexOf(ansOld)];
+  // k 保持原題的 k：作答紀錄、佇列、老師端統計都靠 k 對齊，換了就變成另一題。
+  return Object.assign({}, q, {opts, ans, reshuffled:true});
+}
 function pickForEntry(e){
   const orig = IDX.byK[e.k];
   if(!orig) return null;
   const used = new Set(e.used || []);
-  const fresh = arr => shuffle((arr||[]).filter(q => !used.has(q.k) && !seen(q.k)))[0];
-  let q = fresh(IDX.variants[e.k]);
-  if(!q && orig.pg) q = fresh(IDX.suppsByPg[orig.pg]);
-  if(!q && orig.point) q = fresh((IDX.byPoint[orig.point]||[]).filter(s => s.k !== e.k));
-  if(!q){
-    let sibs = (IDX.bySub[orig.sub]||[]).filter(s => s.k !== e.k);
-    if(orig.skill){ const same = sibs.filter(s => s.skill === orig.skill); if(same.length) sibs = same; }
-    q = fresh(sibs);
-  }
-  return q || orig;
+  const v = shuffle((IDX.variants[e.k] || []).filter(q => !used.has(q.k) && !seen(q.k)))[0];
+  return v || shuffledClone(orig);
 }
 function composeRound(week, drillOnly){
   const items = [], usedK = new Set();
@@ -475,6 +548,7 @@ function grade(item, choice){
     }
   }
   saveState();
+  sync();                       // 每答一題送一次（fire-and-forget，不等回應）
   return {ok, cleared};
 }
 
@@ -668,6 +742,19 @@ function renderHome(){
     r.onchange = () => { ST.mode = r.value; saveState(); };
   });
   $("flaggedNote").textContent = ST.flagged.length ? `已回報 ${ST.flagged.length} 題有問題（老師看得到）` : "";
+  // 認人靠代號（sid），不靠名字：老師在 config.json 改名字不會弄丟進度。
+  const me = STUDENTS.find(x => x[0] === ST.sid);
+  if(me && me[1] !== ST.name){ ST.name = me[1]; saveState(); }
+  $("whoName").textContent = ST.sid ? `${ST.name}（${ST.sid}）` : "還沒選";
+  paintSync();
+}
+function askWho(){
+  const list = STUDENTS.map((x,i) => `${i+1}. ${x[1]}`).join("\n");
+  const pick = prompt(`你是誰？輸入號碼：\n${list}`, "1");
+  const i = parseInt(pick, 10) - 1;
+  if(!(i >= 0 && i < STUDENTS.length)) return;
+  ST.sid = STUDENTS[i][0]; ST.name = STUDENTS[i][1];
+  saveState(); sync(); renderHome();
 }
 
 // ── 作答 ───────────────────────────────────────────
@@ -701,7 +788,10 @@ function renderQ(){
   const item = RUN.items[RUN.i], q = item.q;
   const exam = RUN.mode === "exam" && !RUN.reviewing;
   $("qPos").textContent = `${RUN.reviewing ? "檢討 " : ""}第 ${RUN.i+1} / ${RUN.items.length} 題`;
-  $("qRetag").innerHTML = item.entryK ? `<span class="retag">上次錯的考點，再挑戰！</span>`
+  const need = ST.need, e0 = item.entryK ? ST.queue.find(x => x.k === item.entryK) : null;
+  $("qRetag").innerHTML = item.entryK
+    ? `<span class="retag">上次錯的題，再挑戰${q.reshuffled ? "（同一題，選項順序換了）" : "（換了一批選項）"}`
+      + `　已連對 ${(e0 && e0.streak) || 0}/${need}</span>`
     : (item.review ? `<span class="retag" style="background:var(--chip);color:var(--sub)">複習題</span>` : "");
   $("qPassage").innerHTML = q.pg ? `<div class="passage">${esc(DB.passages[q.pg]||"")}</div>` : "";
   $("qStem").textContent = q.stem;
@@ -803,8 +893,8 @@ function finishRound(){
         `<li>${esc(it.q.stem.slice(0,30))}…（正解 ${it.q.ans}）</li>`).join("") + `</ul></div>`
     : `<div class="wronglist">全對！</div>`;
   $("sumNote").innerHTML = (ST.queue.length
-    ? `待克服考點還有 ${ST.queue.length} 個，下一輪會優先出它們的變形題。`
-    : `沒有待克服的考點了，下一輪全是新題。`)
+    ? `還沒攻克的題還有 ${ST.queue.length} 題，下一輪會再出一次（同一題、選項換過），連對 ${ST.need} 次才算會。`
+    : `沒有還沒攻克的題了，下一輪全是新題。`)
     + (RUN.cleared ? `<div class="clearbadge">✓ 這輪克服了 ${RUN.cleared} 個考點</div>` : "");
   $("btnReview").classList.toggle("hidden", RUN.mode !== "exam");
   show("scr-sum");
@@ -1032,9 +1122,11 @@ function doImport(){
 
 // ── 啟動 ───────────────────────────────────────────
 async function boot(){
+  await loadConfig();
   DB = await (await fetch("questions.json", {cache:"no-store"})).json();
   buildIndex();
   ST = loadState();
+  $("btnWho").onclick = askWho;
   $("btnGo").onclick = () => startRound(false);
   $("btnDrill").onclick = () => startRound(true);
   $("btnNext").onclick = nextQ;
@@ -1075,6 +1167,7 @@ async function boot(){
   $("btnDoImport").onclick = doImport;
   $("btnReset").onclick = () => { if(confirm("確定把所有進度歸零？紀錄會全部消失。")){ ST = freshState(); saveState(); renderHome(); } };
   renderHome(); show("scr-home");
+  if(SYNC_URL && !ST.sid) askWho();      // 第一次進來先認人，老師端才分得出是誰
 }
 boot().catch(e => { document.body.innerHTML = "<p style='padding:30px'>題庫載入失敗，請重新整理。<br>" + e + "</p>"; });
 </script>
