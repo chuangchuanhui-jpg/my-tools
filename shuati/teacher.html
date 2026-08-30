@@ -73,6 +73,23 @@ tr.both td:first-child{box-shadow:inset 3px 0 0 var(--bad)}
 .legend{font-size:12.5px; color:var(--sub); margin-top:10px}
 .legend span{margin-right:14px; white-space:nowrap}
 .empty{color:var(--sub); font-size:14px; padding:10px 0}
+
+/* 總覽：每位學生做過的每一週攤在同一列 */
+.ovrow{display:flex; align-items:flex-start; gap:10px; padding:7px 0;
+  border-bottom:1px solid var(--line); flex-wrap:wrap}
+.ovrow:last-child{border-bottom:0}
+.ovname{flex:0 0 96px; font-weight:700; font-size:15px; padding-top:5px}
+.ovname small{display:block; font-weight:400; font-size:11.5px; color:var(--sub)}
+.ovtiles{display:flex; gap:6px; flex-wrap:wrap; flex:1}
+.ovt{border:1px solid var(--line); border-radius:9px; background:var(--chip);
+  padding:5px 9px; min-width:74px; cursor:pointer; text-align:center; position:relative;
+  overflow:hidden}
+.ovt.on{border-color:var(--accent); box-shadow:0 0 0 2px rgba(43,108,176,.18)}
+.ovt b{display:block; font-size:13px; line-height:1.25}
+.ovt span{display:block; font-size:11px; color:var(--sub); line-height:1.3}
+.ovt i{position:absolute; left:0; bottom:0; height:3px; background:var(--ok)}
+.ovt.part i{background:var(--warn)} .ovt.low i{background:var(--bad)}
+.ovt.off{opacity:.55}
 </style>
 </head>
 <body>
@@ -97,8 +114,17 @@ tr.both td:first-child{box-shadow:inset 3px 0 0 var(--bad)}
   </div>
 </div>
 
+<!-- 總覽一定要排在週次卡上面：只看得到「一週」是這頁最容易誤判的地方
+     （2026-08-30 實例：學生做完第 3~6 週後又回頭補第 2 週，自動追最新就停在
+     第 2 週，老師以為他們只做了兩週）。 -->
+<div class="card" id="overviewCard">
+  <h2>總覽 — 每位學生做過的每一週</h2>
+  <div id="overview"></div>
+  <div class="note" id="ovNote"></div>
+</div>
+
 <div class="card" id="weekCard">
-  <h2>週次</h2>
+  <h2>逐題對照：選一週</h2>
   <div class="chips" id="weekChips"></div>
   <div class="note" id="weekNote"></div>
 </div>
@@ -183,8 +209,15 @@ function weeksSeen(){
 function activeWeek(){
   if(WEEK != null) return WEEK;
   // 自動：挑最近有人動過的那一週
+  // ⚠️ 一定要跟 weeksSeen() 用同一組過濾（week>0、非 TEST）。GAS 那邊的
+  //    selfTest() 會寫一列 sid=TEST / week=0，連線測試也是寫這一列；它一旦
+  //    變成最新，這裡就會回傳 0，兩位學生的卡片全變成「第 0 週還沒有資料」，
+  //    看起來像後端壞掉，其實只是追到測試列。
   let best = null, bt = -1;
-  for(const r of ROWS) if(r.ts > bt){ bt = r.ts; best = Number(r.week); }
+  for(const r of ROWS){
+    if(r.sid === "TEST" || !(Number(r.week) > 0)) continue;
+    if(r.ts > bt){ bt = r.ts; best = Number(r.week); }
+  }
   return best;
 }
 function rowFor(sid, week){
@@ -199,10 +232,65 @@ function pillOf(s){
   return `<span class="pill open">未練</span>`;
 }
 
+function ago(ms){
+  const m = Math.round(ms / 60000);
+  if(m < 1) return "剛剛";
+  if(m < 60) return m + " 分鐘前";
+  const h = Math.round(m / 60);
+  return h < 48 ? h + " 小時前" : Math.round(h / 24) + " 天前";
+}
+
+// 每位學生一列，做過的每一週各一格。這頁原本只能一次看一週，
+// 週次藏在 chip 裡，等於要老師自己一格一格點過去才知道有沒有做——
+// 實際上就漏看了第 3~6 週。這一區的作用只有一個：不要讓任何一週被藏起來。
+function renderOverview(wk){
+  const box = $("overview");
+  box.innerHTML = "";
+  let any = false;
+  for(const [sid, fallback] of STUDENTS){
+    const mine = ROWS.filter(r => r.sid === sid && Number(r.week) > 0)
+                     .sort((a, b) => Number(a.week) - Number(b.week));
+    const row = document.createElement("div");
+    row.className = "ovrow";
+    const last = mine.length ? Math.max(...mine.map(r => r.ts || 0)) : 0;
+    const name = (mine[0] && mine[0].name) || fallback;
+    row.innerHTML = `<div class="ovname">${esc(name)}<small>${
+      last ? "最後作答 " + ago(Date.now() - last) : "沒有紀錄"}</small></div>`;
+    const tiles = document.createElement("div");
+    tiles.className = "ovtiles";
+    if(!mine.length){
+      tiles.innerHTML = `<span class="empty">還沒有任何一週的資料</span>`;
+    }
+    for(const r of mine){
+      any = true;
+      const pct = r.total ? Math.round(r.done / r.total * 100) : 0;
+      const acc = r.answered ? Math.round(r.correct / r.answered * 100) : null;
+      const b = document.createElement("button");
+      // 底色條看的是「攻克率」，不是答對率：答對率高但只做兩題不算做完。
+      b.className = "ovt " + (pct >= 90 ? "" : pct >= 50 ? "part" : "low")
+                    + (Number(r.week) === wk ? " on" : "") + (pct < 10 ? " off" : "");
+      b.innerHTML = `<b>第 ${r.week} 週</b>
+        <span>攻克 ${r.done}/${r.total}</span>
+        <span>答對 ${acc == null ? "–" : acc + "%"}</span>
+        <i style="width:${pct}%"></i>`;
+      b.title = `第 ${r.week} 週：攻克 ${r.done}/${r.total}（${pct}%）、`
+              + `首答 ${r.answered} 題、最後同步 ${ago(Date.now() - (r.ts || 0))}`;
+      b.onclick = () => { WEEK = Number(r.week); render(); };
+      tiles.appendChild(b);
+    }
+    row.appendChild(tiles);
+    box.appendChild(row);
+  }
+  $("ovNote").textContent = any
+    ? "點任一格可以切到那一週的逐題對照。底線長度＝攻克率；只做幾題的格子會變淡。"
+    : "還沒有任何學生的資料。請學生打開刷題頁並作答一題。";
+}
+
 function render(){
   paintLive();
   const weeks = weeksSeen();
   const wk = activeWeek();
+  renderOverview(wk);
 
   const wc = $("weekChips"); wc.innerHTML = "";
   if(!weeks.length){
@@ -221,7 +309,14 @@ function render(){
       wc.appendChild(c);
     }
   }
-  $("weekNote").textContent = wk ? `目前顯示第 ${wk} 週。兩位學生的第 ${wk} 週是同一組題，所以可以逐題對照。` : "";
+  // 講清楚「自動追最新」追的是什麼：它挑的是最後被動到的那一週，不是進度最前面
+  // 的那一週。學生回頭補舊的一週，這裡就會退回去，看起來像進度倒退。
+  const autoNote = "（自動追最新＝最後被動到的那一週，不一定是進度最前面的那一週。"
+                 + "完整進度看上面的總覽。）";
+  $("weekNote").textContent = wk
+    ? `目前顯示第 ${wk} 週。兩位學生的第 ${wk} 週是同一組題，所以可以逐題對照。`
+      + (WEEK == null ? autoNote : "")
+    : "";
 
   // ── 兩欄 ──
   const cols = $("cols"); cols.innerHTML = "";
