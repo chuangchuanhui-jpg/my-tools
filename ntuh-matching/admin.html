@@ -583,7 +583,8 @@ function renderAdmin() {
         <div class="form-row">
           <div class="form-field">
             <label>日期</label>
-            <input type="date" id="newDate" min="2026-05-01" max="2026-09-30">
+            <!-- 不設 max：寫死上界每上一個月的時段就會咬一次（2026-09-02 因 10 月時段被擋而移除） -->
+            <input type="date" id="newDate" min="2026-05-01">
           </div>
           <div class="form-field">
             <label>開始時間</label>
