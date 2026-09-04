@@ -355,8 +355,26 @@ textarea{width:100%; min-height:74px; border:1px solid var(--line); border-radiu
 
 <script>
 "use strict";
-const LS_KEY = "guowen_shuati_v2";
+// ── 進度的存放位置 ─────────────────────────────────
+// ⚠️ 2026-09-05 改成「每個學生各存一份」。
+//    舊版整台裝置只有一份進度（單一 LS_KEY），而「換人」只換 sid 與 name、
+//    不換內容——名牌貼到別人的成績上，那份成績就變成他的。實際發生過：
+//    2026-09-04 A|8 與 B|8 的 41 題逐題作答完全相同、round 同為 61、
+//    寫入時間差 1 分鐘，就是有人按了「換人」造成同一份進度掛到兩個名字。
+//    現在每人一個格子，換人＝真的切換使用者，誰也繼承不到誰。
+const LS_KEY  = "guowen_shuati_v2";                // 舊的單一格子；只讀不寫，永久保留當備份
+const LS_LAST = "guowen_shuati_v2_last";           // 這台裝置上次是誰在用
+const keyFor  = sid => LS_KEY + ":" + sid;         // 每人一個格子
+const LS_BAK = "guowen_shuati_v2_backup_pre_v3";   // v2→v3 遷移前的整包備份，只寫一次
 const ROUND_N = 10, MAX_REDO_PER_ROUND = 5;
+// 連錯幾次就退場、標記待檢討交給老師（2026-09-04 使用者裁示）。
+// 理由：變形題只覆蓋 5.3% 的題（859 題中 42 題有變形題），重複出現的多半是
+// 同一題幹只換選項順序，再練下去練的是記憶不是理解。
+const MISS_OUT = 2;
+// log 是所有統計的依據。舊版滿 4000 筆就從最前面砍，砍掉的正好是最早的週次
+// ——那正是老師最需要回頭檢討的部分，而且會讓「首答」被誤判成後來的重做
+// （重做多半答對），正確率會憑空變好。改成只砍重做、首答一律保留，見 trimLog()。
+const LOG_MAX = 12000;
 // 顏色照「難度階段」給（入門→挑戰四段），不是照週——20 週用 20 個顏色會變花。
 const PCOLOR = {"入門":"var(--w3)", "基礎":"var(--w1)", "進階":"var(--w4)", "挑戰":"var(--w5)"};
 const PHASE_ORDER = ["入門","基礎","進階","挑戰"];
@@ -393,15 +411,23 @@ function sync(){
     const rec = ST.q[q.k] || {r:0, w:0, first:null};
     const e = ST.queue.find(x => x.k === q.k);
     return {k:q.k, sub:q.sub, stem:(q.stem||"").slice(0,22),
+            // 考點：799 題只有 42 題有標註，所以這裡常常是空字串。
+            // 老師端負責誠實顯示「無考點標註」，不准拿題幹冒充考點。
+            point: q.point || "",
             done: !e && rec.first !== null && rec.r > 0,
             streak: e ? (e.streak||0) : (rec.first !== null ? ST.need : 0),
-            tries: rec.r + rec.w, wrong: rec.w};
+            tries: rec.r + rec.w, wrong: rec.w,
+            first: rec.first,                              // 首答對錯（石頭帳，重做洗不白）
+            review: !!(ST.review || {})[q.k]};             // 連錯 2 次已退場、待老師檢討
   });
   const body = JSON.stringify({
     sid: ST.sid, name: ST.name, week: w, round: ST.round,
     done: seeds.filter(x => x.done).length, total: seeds.length,
     answered: s.done, correct: Math.round((s.pct || 0) * s.done / 100),
     inRound: RUN ? {i: RUN.i + 1, n: RUN.items.length} : null,
+    need: ST.need,                                   // 老師端顯示 streak/need，不要寫死 2
+    reviewN: Object.keys(ST.review || {}).length,    // 累計退場待檢討題數
+    logTrimmed: ST.logTrimmed || 0,                  // >0 代表有紀錄被裁掉，老師端要示警
     seeds, ts: Date.now()
   });
   // text/plain 才不會觸發 CORS 預檢（Apps Script 不處理 OPTIONS）；
@@ -425,18 +451,117 @@ function paintSync(){
 // 只證明短期記得，不證明會了。舊版（2026-08-07 使用者定）就是連對 2 次才算攻克，
 // 8/14 改版時被改成 1，這裡改回來。
 function freshState(){
-  return {v:2, need:2, mode:"practice", week:1, round:0, sid:"", name:"",
-          q:{}, log:[], days:[], queue:[], mastered:{}, flagged:[],
-          answered:0, correct:0};
+  return {v:3, need:1, mode:"practice", week:1, round:0, sid:"", name:"",
+          q:{}, log:[], days:[], queue:[], mastered:{}, flagged:[], review:{},
+          answered:0, correct:0, logTrimmed:0};
 }
-function loadState(){
+// ── v2 → v3 遷移（2026-09-05）────────────────────────────────
+// 規則從「連對 2 次才算攻克、錯題重複到攻克為止」改成
+// 「答對 1 次即攻克、連錯 2 次退場交給老師檢討」（使用者 2026-09-04 裁示）。
+//
+// ⚠️ 這裡只動「規則欄位」，作答紀錄一律不碰：
+//    q（每題首答與對錯次數）、log（每一次作答）、mastered（已攻克）、
+//    days、flagged、answered、correct —— 原封不動帶過去。
+//    已經攻克的題不會因為 need 變小而退回未攻克（mastered 是既成事實，不重算）。
+//
+// 遷移前先把舊資料整包另存到 LS_BAK，萬一出事可以還原。只寫一次，
+// 不覆蓋——第二次以後遷移（理論上不會發生）不能把備份洗成新資料。
+function migrate(s){
+  if((s.v || 0) >= 3) return s;
+  s.need = 1;
+  // 在佇列裡＝它本來就是答錯才進來的，視為已錯 1 次，再錯一次就退場。
+  // 用 ?? 1 而不是 ?? 0：後者會讓所有既有錯題多得到一次機會，與裁示不符。
+  for(const e of (s.queue || [])) if(e.miss == null) e.miss = 1;
+  s.review = s.review || {};
+  s.v = 3;
+  return s;
+}
+// 讀出某一個格子（讀不到或內容不對就回 null，絕不丟例外）
+function readSlot(key){
   try{
-    const raw = localStorage.getItem(LS_KEY);
-    if(raw){ const s = JSON.parse(raw); if(s && s.q) return Object.assign(freshState(), s); }
+    const raw = localStorage.getItem(key);
+    if(!raw) return null;
+    const s = JSON.parse(raw);
+    if(!s || typeof s.q !== "object") return null;
+    // ⚠️ 備份要存「原始字串」，而且要在 Object.assign 之前。
+    //    存合併後的物件會混進 freshState() 的新欄位，就不是原樣了，
+    //    還原時等於還原成一個從來不存在過的狀態。只寫一次，不覆蓋。
+    if((s.v || 0) < 3){
+      try{ if(!localStorage.getItem(LS_BAK)) localStorage.setItem(LS_BAK, raw); }catch(e){}
+    }
+    return migrate(Object.assign(freshState(), s));
+  }catch(e){ return null; }
+}
+
+// ── 舊的單一格子 → 每人一格 ────────────────────────
+// 三條安全規則，違反任何一條就可能把某個孩子的紀錄弄丟或張冠李戴：
+//   ① 不猜主人：舊資料沒有 sid 就完全不動（那份不知道是誰的）
+//   ② 不覆蓋：目標學生已經有自己的一份，就跳過
+//   ③ 不刪除：舊格子 LS_KEY 原封不動永久保留，可以還原
+function migrateSlots(){
+  var raw;
+  try{ raw = localStorage.getItem(LS_KEY); }catch(e){ return; }
+  if(!raw) return;
+  let s;
+  try{ s = JSON.parse(raw); }catch(e){ return; }
+  if(!s || typeof s.q !== "object" || !s.sid) return;      // ① 沒 sid 不搬
+  const k = keyFor(s.sid);
+  try{
+    if(localStorage.getItem(k)) return;                    // ② 已有就不覆蓋
+    localStorage.setItem(k, raw);                          // 逐字搬，內容一個位元都不動
+    if(!localStorage.getItem(LS_LAST)) localStorage.setItem(LS_LAST, s.sid);
   }catch(e){}
+}
+
+function loadState(){
+  migrateSlots();
+  let last = null;
+  try{ last = localStorage.getItem(LS_LAST); }catch(e){}
+  if(last){
+    const s = readSlot(keyFor(last));
+    if(s) return s;
+  }
+  // 還沒認過人的情況（先刷了幾題才點名字）：沿用舊格子。
+  // 已經有 sid 的舊格子在上面就搬走了，不會走到這裡。
+  const legacy = readSlot(LS_KEY);
+  if(legacy && !legacy.sid) return legacy;
   return freshState();
 }
-function saveState(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(ST)); }catch(e){} }
+
+function saveState(){
+  try{
+    // 有身分就存進自己的格子；還沒認人就先放在舊格子，等點名字時再歸戶。
+    localStorage.setItem(ST.sid ? keyFor(ST.sid) : LS_KEY, JSON.stringify(ST));
+    if(ST.sid) localStorage.setItem(LS_LAST, ST.sid);
+  }catch(e){}
+}
+
+// ── log 修剪：只砍重做，首答一律保留 ──────────────────────
+// 舊版是 splice(0, len-4000)，從最前面砍，等於優先砍掉最早的週次。兩個後果：
+//   ① 老師最需要回頭檢討的早期週次先消失；
+//   ② firstStats()／groupRows()／packWeek() 都是「從 log 由前往後找第一筆當首答」，
+//      首答被砍掉之後，它們會把後來的「重做」誤當成首答。重做多半是看過解析才做的，
+//      所以正確率會憑空變好——不會報錯，只會給你一個好看的假數字。
+// 改法：每題的第一筆（＝真首答）永遠留著，配額不夠時從最舊的重做開始砍。
+// 859 題全部首答也才 859 筆，離 LOG_MAX 很遠，實務上首答不可能被擠掉。
+function trimLog(){
+  const log = ST.log || [];
+  if(log.length <= LOG_MAX) return;
+  const seen = new Set(), isFirst = new Array(log.length);
+  for(let i = 0; i < log.length; i++){
+    if(!seen.has(log[i].k)){ seen.add(log[i].k); isFirst[i] = true; }
+  }
+  const budget = Math.max(0, LOG_MAX - seen.size);   // 留給重做的額度
+  const keepRedo = new Set();
+  let kept = 0;
+  for(let i = log.length - 1; i >= 0 && kept < budget; i--){   // 由新往舊留重做
+    if(!isFirst[i]){ keepRedo.add(i); kept++; }
+  }
+  const before = log.length;
+  ST.log = log.filter((e, i) => isFirst[i] || keepRedo.has(i));  // filter 保序
+  // 記下砍了幾筆，讓老師端可以顯示「有紀錄被裁掉」，不要靜靜地丟。
+  ST.logTrimmed = (ST.logTrimmed || 0) + (before - ST.log.length);
+}
 
 // ── 索引 ───────────────────────────────────────────
 function buildIndex(){
@@ -527,7 +652,7 @@ function grade(item, choice){
   //    那些也是第 1 週的練習成果。只用 w 收會漏掉（實測第 1 週漏 3~8 題）。
   ST.log.push({k:q.k, w:q.week, sw:ST.week || q.week, s:q.sub, sk:q.skill||"",
                p:q.point||"", a:choice||"", o:ok?1:0, t:Date.now()});
-  if(ST.log.length > 4000) ST.log.splice(0, ST.log.length - 4000);
+  trimLog();
   const today = new Date().toISOString().slice(0,10);
   if(ST.days[ST.days.length-1] !== today) ST.days.push(today);
   const entry = item.entryK ? ST.queue.find(e => e.k === item.entryK) : null;
@@ -539,11 +664,25 @@ function grade(item, choice){
         ST.queue = ST.queue.filter(e => e !== entry);
         ST.mastered[entry.k] = ST.round; cleared = true;
       }
-    } else entry.streak = 0;
+    } else {
+      entry.streak = 0;
+      // 連錯 MISS_OUT 次就別再纏著學生：變形題只覆蓋 5.3%，重複出現的多半是
+      // 同一題幹只換選項順序，再練下去練的是記憶不是理解。退場、標記待檢討，
+      // 交給老師在課堂處理（使用者 2026-09-04 裁示）。
+      entry.miss = (entry.miss ?? 1) + 1;
+      if(entry.miss >= MISS_OUT){
+        ST.queue = ST.queue.filter(e => e !== entry);
+        (ST.review ||= {})[entry.k] = ST.round;   // 待檢討，不是攻克
+      }
+    }
   } else if(!ok){
     const key = q.tag === "bank" ? q.k : (q.variant_of || q.k);
-    if(!ST.queue.some(e => e.k === key)){
-      ST.queue.push({k:key, streak:0, used:[q.k], added:ST.round});
+    // ⚠️ 已退場待檢討的題不准回到佇列。題目不夠時 composeRound() 會抽舊題來湊
+    //    （那時 entryK 是 null，就會走到這個分支），少了這道防護，「連錯 2 次退場」
+    //    會被靜靜撤銷，而且不會有任何提示。
+    //    注意 rec.w 在上面已經照常累加，所以「錯第 3 次、第 4 次」老師端仍看得到。
+    if(!(ST.review || {})[key] && !ST.queue.some(e => e.k === key)){
+      ST.queue.push({k:key, streak:0, miss:1, used:[q.k], added:ST.round});
       delete ST.mastered[key];
     }
   }
@@ -753,7 +892,25 @@ function askWho(){
   const pick = prompt(`你是誰？輸入號碼：\n${list}`, "1");
   const i = parseInt(pick, 10) - 1;
   if(!(i >= 0 && i < STUDENTS.length)) return;
-  ST.sid = STUDENTS[i][0]; ST.name = STUDENTS[i][1];
+  const sid = STUDENTS[i][0], name = STUDENTS[i][1];
+
+  if(ST.sid === sid){ ST.name = name; saveState(); sync(); renderHome(); return; }
+
+  if(!ST.sid){
+    // 還沒認過人：目前這份進度就歸他（例如先刷了幾題才點名字）
+    ST.sid = sid; ST.name = name; saveState(); sync(); renderHome(); return;
+  }
+
+  // ⚠️ 真的換人。舊版到這裡只改 sid 與 name、其餘原封不動，於是同一份成績
+  //    被貼上另一個人的名字再送一次——2026-09-04 的 A|8 / B|8 就是這樣來的
+  //    （41 題逐題完全相同、round 同為 61、相隔 1 分鐘）。
+  //    現在：先把目前這個人的進度存回他自己的格子，再讀出目標學生自己的那一份；
+  //    目標學生沒有紀錄就給全新的，不繼承任何人。
+  if(!confirm(`要從「${ST.name}」切換成「${name}」嗎？\n\n`
+            + `兩個人的進度會分開保存，不會互相蓋掉。切回來也拿得回原本的紀錄。`)) return;
+  saveState();
+  ST = readSlot(keyFor(sid)) || Object.assign(freshState(), {sid: sid, name: name});
+  ST.sid = sid; ST.name = name;
   saveState(); sync(); renderHome();
 }
 
@@ -892,9 +1049,12 @@ function finishRound(){
     ? `<div class="wronglist">答錯的題：<ul>` + wrong.map(it =>
         `<li>${esc(it.q.stem.slice(0,30))}…（正解 ${it.q.ans}）</li>`).join("") + `</ul></div>`
     : `<div class="wronglist">全對！</div>`;
+  const rvN = Object.keys(ST.review || {}).length;
   $("sumNote").innerHTML = (ST.queue.length
-    ? `還沒攻克的題還有 ${ST.queue.length} 題，下一輪會再出一次（同一題、選項換過），連對 ${ST.need} 次才算會。`
+    ? `還沒攻克的題還有 ${ST.queue.length} 題，下一輪會再出一次（同一題、選項換過）。`
+      + `答對 1 次就算過；再錯一次就先跳過，留給老師上課檢討。`
     : `沒有還沒攻克的題了，下一輪全是新題。`)
+    + (rvN ? `<div class="note">另有 ${rvN} 題連錯兩次，已經留給老師檢討，不會再自動出現。</div>` : "")
     + (RUN.cleared ? `<div class="clearbadge">✓ 這輪克服了 ${RUN.cleared} 個考點</div>` : "");
   $("btnReview").classList.toggle("hidden", RUN.mode !== "exam");
   show("scr-sum");
@@ -1115,7 +1275,12 @@ function doImport(){
   try{
     const s = JSON.parse($("backupTa").value);
     if(!s || typeof s.q !== "object") throw 0;
-    ST = Object.assign(freshState(), s); saveState(); renderHome();
+    // ⚠️ 匯入是「把備份倒回自己的格子」，不是「變成另一個人」。
+    //    不保住現用身分的話，在甲的手機上匯入乙的備份，會直接蓋掉乙在這台裝置的紀錄。
+    const keepSid = ST.sid, keepName = ST.name;
+    ST = migrate(Object.assign(freshState(), s));
+    if(keepSid){ ST.sid = keepSid; ST.name = keepName; }
+    saveState(); renderHome();
     alert("匯入成功！");
   }catch(e){ alert("匯入失敗：內容不是有效的進度碼"); }
 }
@@ -1165,7 +1330,10 @@ async function boot(){
   $("btnExport").onclick = doExport;
   $("btnImport").onclick = () => { $("backupBox").classList.remove("hidden"); $("backupTa").value=""; $("backupTa").focus(); };
   $("btnDoImport").onclick = doImport;
-  $("btnReset").onclick = () => { if(confirm("確定把所有進度歸零？紀錄會全部消失。")){ ST = freshState(); saveState(); renderHome(); } };
+  // 歸零只清「這個人」的紀錄，身分保留——否則歸零後 sid 變空，
+  // 下次存檔會落回舊格子，另一個孩子的那一格也還在，狀態會很混亂。
+  $("btnReset").onclick = () => { if(confirm(`確定把「${ST.name || "這個人"}」的進度歸零？紀錄會全部消失。`)){
+    ST = Object.assign(freshState(), {sid: ST.sid, name: ST.name}); saveState(); renderHome(); } };
   renderHome(); show("scr-home");
   if(SYNC_URL && !ST.sid) askWho();      // 第一次進來先認人，老師端才分得出是誰
 }
