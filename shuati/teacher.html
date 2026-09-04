@@ -121,6 +121,8 @@ tr.both td:first-child{box-shadow:inset 3px 0 0 var(--bad)}
   <h2>總覽 — 每位學生做過的每一週</h2>
   <div id="overview"></div>
   <div class="note" id="ovNote"></div>
+  <!-- 常駐診斷列：永遠顯示，讓「沒刷／沒送到／拉不下來」分得出來 -->
+  <div class="note" id="diag" style="margin-top:8px; padding-top:8px; border-top:1px dashed rgba(128,128,128,.35)"></div>
 </div>
 
 <div class="card" id="weekCard">
@@ -135,10 +137,11 @@ tr.both td:first-child{box-shadow:inset 3px 0 0 var(--bad)}
   <h2>共同弱點 — 這堂課該講的</h2>
   <div id="commonBody"></div>
   <div class="legend">
-    <span><b class="pill done">攻克</b> 連續答對 2 次</span>
-    <span><b class="pill mid">1/2</b> 對了一次，再對一次就過</span>
-    <span><b class="pill open">未練</b> 這輪還沒碰到</span>
-    <span><b class="pill stuck">卡住</b> 練 3 次以上仍未攻克</span>
+    <span><b class="pill done">攻克</b> 答對了，一次就對</span>
+    <span><b class="pill done">攻克<small>（曾錯 1）</small></b> 錯過一次但救回來了 → 值得加強</span>
+    <span><b class="pill mid">錯 1 次</b> 還沒重做，系統下一輪會再出</span>
+    <span><b class="pill stuck">錯 2 次 · 待檢討</b> 系統不再自動出題，<b>只能課堂上講</b></span>
+    <span><b class="pill open">未練</b> 這一週還沒碰到這題</span>
   </div>
 </div>
 </div>
@@ -157,7 +160,13 @@ tr.both td:first-child{box-shadow:inset 3px 0 0 var(--bad)}
    ══════════════════════════════════════════════════════════════ */
 
 const LS_URL  = "guowen_teacher_url";
-const POLL_MS = 5000;
+// ⚠️ 2026-09-05：POLL_MS 5000→20000、逾時 12000→45000。
+//    /exec 實測回應要 7.6～38.2 秒（2026-09-04 連打四次：38.2 / 7.6 / 9.5 / 7.8）。
+//    舊設定是「每 5 秒發一次、12 秒判失敗」，等於要求後端做到它做不到的事：
+//    請求還沒回來就又發一個，越疊越慢，看板幾乎必然空白。使用者自己的
+//    看進度.py 早就用 60 秒逾時＋4 次重試才穩，這裡照那個現實調。
+const POLL_MS = 20000;
+const REQ_TIMEOUT_MS = 45000;
 const STALE_MS = 90000;     // 超過 90 秒沒更新，視為那位學生離線
 
 // ⚠️ 設定用 fetch + no-store 讀，不用 <script src>：後者會被瀏覽器快取，
@@ -173,8 +182,12 @@ let WEEK = null;            // null = 自動追最新
 let jsonpN = 0, lastOk = 0, lastErr = false;
 
 /* ── JSONP ─────────────────────────────────────── */
+let inFlight = false;       // ⚠️ 沒有這道擋板，setInterval 會在上一次還沒回來時
+                            //    又發一個，請求越疊越多、後端越來越慢，自己把自己壓垮。
+let detailRetried = false;  // 首次載入補拉逐題明細用，只補一次
 function pull(){
-  if(!URL_) return;
+  if(!URL_ || inFlight) return;
+  inFlight = true;
   const cb = "__t" + (++jsonpN);
   const s = document.createElement("script");
   let done = false;
@@ -183,23 +196,59 @@ function pull(){
     ROWS = Array.isArray(rows) ? rows : [];
     lastOk = Date.now(); lastErr = false;
     cleanup(); render();
+    // 第一次拉的時候還不知道要看哪一週（activeWeek 要有資料才算得出來），
+    // 所以那一次一定是 slim、沒有逐題明細。這裡補拉一次，不用等 20 秒。
+    // needDetail 只允許補一次，避免變成無窮迴圈。
+    const wk = (WEEK != null) ? WEEK : activeWeek();
+    const has = wk && ROWS.some(r => Number(r.week) === wk && (r.seeds || []).length);
+    if(wk && !has && !detailRetried){ detailRetried = true; setTimeout(pull, 300); }
+    if(has) detailRetried = false;
   };
-  const cleanup = () => { delete window[cb]; s.remove(); };
+  const cleanup = () => { inFlight = false; delete window[cb]; s.remove(); };
   s.onerror = () => { if(!done){ lastErr = true; cleanup(); paintLive(); } };
-  setTimeout(() => { if(!done){ lastErr = true; cleanup(); paintLive(); } }, 12000);
-  s.src = URL_ + (URL_.includes("?") ? "&" : "?") + "callback=" + cb + "&_=" + Date.now();
+  setTimeout(() => { if(!done){ lastErr = true; cleanup(); paintLive(); } }, REQ_TIMEOUT_MS);
+  // 所有列都瘦身，只有「正在看的那一週」帶逐題明細。
+  // ⚠️ 不能寫成 week=N 只拉那一週：上方總覽要的是「每位學生的每一週」，
+  //    那樣寫會讓總覽整排消失。full=N 兩者兼顧。
+  // seeds 塞了每題的題幹，一列約 6 KB；不瘦身的話題刷越多輪詢越慢。
+  const wkNow = (WEEK != null) ? WEEK : activeWeek();
+  const extra = wkNow ? ("&full=" + wkNow) : "&slim=1";
+  s.src = URL_ + (URL_.includes("?") ? "&" : "?") + "callback=" + cb + extra + "&_=" + Date.now();
   document.body.appendChild(s);
 }
 
+// ⚠️ 這一段是整個修復的重點。舊版把三種完全不同的狀況顯示成同一句
+//    「還沒有資料」，老師不可能分辨：
+//      A 學生沒刷　B 學生刷了但資料沒送到　C 送到了但這頁拉不下來
+//    分不出來，就只能瞎猜、重部署、然後還是不知道發生什麼事。
 function paintLive(){
   const el = $("live");
   if(!URL_){ el.innerHTML = `<span class="dot"></span>未設定同步網址`; return; }
-  if(lastErr && !lastOk){ el.innerHTML = `<span class="dot err"></span>連不上後端`; return; }
-  if(!lastOk){ el.innerHTML = `<span class="dot"></span>連線中…`; return; }
+  if(lastErr && !lastOk){
+    el.innerHTML = `<span class="dot err"></span>🔴 連不上後端 —— 這是老師端的問題，<b>不代表學生沒刷</b>`;
+    return;
+  }
+  if(!lastOk){ el.innerHTML = `<span class="dot"></span>連線中…（後端通常要 8～40 秒）`; return; }
   const s = Math.round((Date.now() - lastOk) / 1000);
   el.innerHTML = `<span class="dot ${lastErr ? "err" : "on"}"></span>`
     + (lastErr ? "更新失敗，顯示的是上一次的資料"
-               : `${s < 8 ? "剛剛" : s + " 秒前"}更新 · 每 ${POLL_MS/1000} 秒自動重整`);
+               : `${s < 25 ? "剛剛" : s + " 秒前"}更新 · 每 ${POLL_MS/1000} 秒自動重整`);
+}
+
+// 常駐診斷列：不論有沒有資料都要顯示，讓「後端是通的但沒收到這位學生的資料」
+// 這種狀況看得出來。沒有這一列，空白畫面永遠有三種解釋。
+function paintDiag(){
+  const el = $("diag");
+  if(!el) return;
+  if(!lastOk){ el.innerHTML = `尚未成功取得任何回應。`; return; }
+  const newest = ROWS.reduce((m, r) => (r.ts > (m ? m.ts : 0) ? r : m), null);
+  const trimmed = ROWS.filter(r => (r.logTrimmed || 0) > 0);
+  el.innerHTML =
+    `後端最後成功回應：${ago(Date.now() - lastOk)}　·　表內 ${ROWS.length} 列　·　` +
+    (newest ? `最新一列：${esc(newest.name || newest.sid)} 第 ${newest.week} 週，${ago(Date.now() - newest.ts)}`
+            : `<b>表是空的——後端正常，但一位學生的資料都沒收到</b>`) +
+    (trimmed.length ? `<br><b style="color:var(--bad)">⚠ ${trimmed.map(r => esc(r.name || r.sid)).join("、")}
+      的作答紀錄有被裁掉（超過上限），早期週次的統計可能不完整。</b>` : "");
 }
 
 /* ── 畫面 ──────────────────────────────────────── */
@@ -223,11 +272,21 @@ function activeWeek(){
 function rowFor(sid, week){
   return ROWS.find(r => r.sid === sid && Number(r.week) === week) || null;
 }
+// ⚠️ 2026-09-05 改寫（使用者裁示：「什麼題目錯了一次，什麼題目錯兩次，才是重點」）。
+//    舊版把三種狀況壓成同一個字，老師分不出來：
+//      · 錯 1 次後來答對 → 顯示「攻克」，完全看不出他曾經錯過
+//      · 錯 1 次還沒重做 → 顯示「練過」
+//      · 錯 2 次（已退場待檢討）→ 也顯示「練過」（「卡住」要 tries>=3 才亮）
+//    資料（wrong）學生端本來就在傳，是這裡把它丟掉了。
 function pillOf(s){
   if(!s) return `<span class="pill open">–</span>`;
-  if(s.done) return `<span class="pill done">攻克</span>`;
-  if((s.tries||0) >= 3) return `<span class="pill stuck">卡住</span>`;
-  if((s.streak||0) > 0) return `<span class="pill mid">${s.streak}/2</span>`;
+  const w = s.wrong || 0;
+  if(s.review) return `<span class="pill stuck">錯 ${w} 次 · 待檢討</span>`;
+  if(s.done) return w
+    ? `<span class="pill done">攻克<small>（曾錯 ${w}）</small></span>`
+    : `<span class="pill done">攻克</span>`;
+  if(w >= 2) return `<span class="pill stuck">錯 ${w} 次</span>`;
+  if(w === 1) return `<span class="pill mid">錯 1 次</span>`;
   if((s.tries||0) > 0) return `<span class="pill open">練過</span>`;
   return `<span class="pill open">未練</span>`;
 }
@@ -275,7 +334,7 @@ function renderOverview(wk){
         <i style="width:${pct}%"></i>`;
       b.title = `第 ${r.week} 週：攻克 ${r.done}/${r.total}（${pct}%）、`
               + `首答 ${r.answered} 題、最後同步 ${ago(Date.now() - (r.ts || 0))}`;
-      b.onclick = () => { WEEK = Number(r.week); render(); };
+      b.onclick = () => { WEEK = Number(r.week); pickWeek(); };
       tiles.appendChild(b);
     }
     row.appendChild(tiles);
@@ -283,29 +342,33 @@ function renderOverview(wk){
   }
   $("ovNote").textContent = any
     ? "點任一格可以切到那一週的逐題對照。底線長度＝攻克率；只做幾題的格子會變淡。"
-    : "還沒有任何學生的資料。請學生打開刷題頁並作答一題。";
+    : "後端正常，但一位學生的資料都沒收到。可能是還沒刷，也可能是送不出去——請學生按「匯出進度給老師」就能分辨。";
 }
 
+// 切換週次時要重新拉那一週的逐題明細（明細只拉「正在看的那一週」，
+// 只 render 不 pull 的話點了會停在「明細載入中」）。
+function pickWeek(){ detailRetried = false; render(); pull(); }
 function render(){
   paintLive();
+  paintDiag();
   const weeks = weeksSeen();
   const wk = activeWeek();
   renderOverview(wk);
 
   const wc = $("weekChips"); wc.innerHTML = "";
   if(!weeks.length){
-    wc.innerHTML = `<span class="empty">還沒有任何學生的資料。請學生打開刷題頁並作答一題。</span>`;
+    wc.innerHTML = `<span class="empty">後端正常，但一位學生的資料都沒收到。可能是還沒刷，也可能是送不出去——請學生按「匯出進度給老師」就能分辨。</span>`;
   } else {
     const auto = document.createElement("button");
     auto.className = "chip" + (WEEK == null ? " on" : "");
     auto.textContent = "自動追最新";
-    auto.onclick = () => { WEEK = null; render(); };
+    auto.onclick = () => { WEEK = null; pickWeek(); };
     wc.appendChild(auto);
     for(const w of weeks){
       const c = document.createElement("button");
       c.className = "chip" + (WEEK === w ? " on" : "");
       c.textContent = "第 " + w + " 週";
-      c.onclick = () => { WEEK = w; render(); };
+      c.onclick = () => { WEEK = w; pickWeek(); };
       wc.appendChild(c);
     }
   }
@@ -325,8 +388,24 @@ function render(){
     const d = document.createElement("div");
     d.className = "card stu";
     if(!r){
-      d.innerHTML = `<h3>${esc(fallback)}</h3><div class="meta">第 ${wk || "?"} 週還沒有資料</div>
-        <div class="empty">這位學生還沒開始，或還沒進到這一週。</div>`;
+      // ⚠️ 三態要分開講。舊版一律顯示「還沒開始，或還沒進到這一週」，
+      //    把「後端掛了」「他沒刷」「他在刷別週」全部混成同一句。
+      const mine = ROWS.filter(x => x.sid === sid && Number(x.week) > 0);
+      const last = mine.length ? Math.max(...mine.map(x => x.ts || 0)) : 0;
+      let msg;
+      if(lastErr && !lastOk){
+        msg = `🔴 <b>連不上後端</b>，所以看不到他的資料。<b>這不代表他沒刷。</b>`;
+      } else if(!mine.length){
+        msg = `⚪ <b>後端正常，但一筆都沒收到他的資料。</b>可能是還沒刷，`
+            + `也可能是他的裝置送不出去（例如沒點「我是誰」）。`
+            + `請他按「匯出進度給老師」把進度傳給你，就能分辨。`;
+      } else {
+        const lastW = mine.reduce((m, x) => (x.ts > (m ? m.ts : 0) ? x : m), null);
+        msg = `🔵 <b>他有在刷，只是還沒進到第 ${wk} 週。</b>`
+            + `最後動的是第 ${lastW.week} 週，${ago(Date.now() - last)}。`;
+      }
+      d.innerHTML = `<h3>${esc(fallback)}</h3><div class="meta">第 ${wk || "?"} 週沒有資料</div>
+        <div class="empty">${msg}</div>`;
       cols.appendChild(d); continue;
     }
     const pct = r.total ? Math.round(r.done / r.total * 100) : 0;
@@ -355,7 +434,14 @@ function render(){
   const rB = wk ? rowFor(STUDENTS[1][0], wk) : null;
   if(!rA && !rB){ body.innerHTML = `<div class="empty">等兩位學生開始作答後，這裡會列出這一週每一題的逐題對照。</div>`; return; }
 
-  const base = (rA && rA.seeds.length ? rA : rB).seeds;
+  // ⚠️ 瘦身（slim/full）之後 seeds 可能是空的。舊寫法 (rA && rA.seeds.length ? rA : rB).seeds
+  //    在 rB 為 null 時會直接丟 TypeError，整頁白掉。
+  const seedsOf = r => (r && Array.isArray(r.seeds)) ? r.seeds : [];
+  const base = seedsOf(rA).length ? seedsOf(rA) : seedsOf(rB);
+  if(!base.length){
+    body.innerHTML = `<div class="empty">逐題明細載入中…（為了讓看板快一點，明細只拉正在看的那一週）</div>`;
+    return;
+  }
   const mapB = new Map((rB ? rB.seeds : []).map(s => [s.k, s]));
   const mapA = new Map((rA ? rA.seeds : []).map(s => [s.k, s]));
 
@@ -366,24 +452,60 @@ function render(){
     //    沒作答是「未知」，不是「弱」。少了 tries>0 這個條件，開課第一分鐘
     //    整張表會全部標紅，老師被誤導去講其實沒人卡住的考點。
     const bothOpen = !!a && !!b && !a.done && !b.done && a.tries > 0 && b.tries > 0;
-    return {i, k: s.k, sub: s.sub, stem: s.stem, a, b, bothOpen};
+    const worst = Math.max((a && a.wrong) || 0, (b && b.wrong) || 0);
+    return {i, k: s.k, sub: s.sub, stem: s.stem, point: s.point || "", a, b, bothOpen, worst};
   });
   const nBoth = rows.filter(r => r.bothOpen).length;
 
+  // ── 該檢討的題（使用者：「每週抓兩週的題目出來檢討與加強」）──
+  // 排序＝有人錯得最多的排最前面。錯 2 次以上的是已退場、系統不會再出的，
+  // 只能靠課堂處理，所以放最上面。
+  const todo = rows.filter(r => r.worst > 0).sort((x, y) => y.worst - x.worst);
+  const n2 = todo.filter(r => r.worst >= 2).length;
+
+  // ── 考點欄要誠實 ──
+  // 799 題只有 42 題有考點標註（第 13/18/20 週一題都沒有）。舊版這一欄標題寫
+  // 「考點」卻顯示題幹前 22 字，會讓人以為系統有考點分析。有就給考點，
+  // 沒有就明說沒有，不拿題幹冒充。
+  const hasPoint = rows.filter(r => r.point).length;
+  const cell = r => r.point
+    ? `<td class="k" title="${esc(r.stem)}">${esc(r.point)}</td>`
+    : `<td class="k" title="${esc(r.stem)}">${esc(r.stem)}…<small style="opacity:.5">（無考點標註）</small></td>`;
+
   body.innerHTML =
     `<div class="note" style="margin:0 0 10px">` +
-      (nBoth ? `<b style="color:var(--bad)">${nBoth} 個考點兩個人都還沒攻克</b>（下方紅底），優先在課堂上講。`
-             : `目前沒有「兩人都卡住」的考點。`) +
+      (todo.length
+        ? `<b style="color:var(--bad)">這一週有 ${todo.length} 題有人做錯</b>` +
+          (n2 ? `，其中 <b style="color:var(--bad)">${n2} 題錯了 2 次以上</b>（系統已不再自動出題，只能課堂上講）` : "") + `。`
+        : `這一週目前沒有人做錯。`) +
+      (nBoth ? `　另有 ${nBoth} 個兩人都還沒攻克（下方紅底）。` : "") +
+    `</div>` +
+    (todo.length
+      ? `<table><thead><tr>
+           <th style="width:74px">題型</th><th>該檢討的題（錯最多的在最上面）</th>
+           <th style="width:64px">${esc((rA && rA.name) || STUDENTS[0][1])}</th>
+           <th style="width:64px">${esc((rB && rB.name) || STUDENTS[1][1])}</th>
+         </tr></thead><tbody>` +
+        todo.map(r =>
+          `<tr class="${r.worst >= 2 ? "both" : ""}">
+             <td>${esc(r.sub)}</td>${cell(r)}
+             <td>${pillOf(r.a)}</td><td>${pillOf(r.b)}</td>
+           </tr>`).join("") +
+        `</tbody></table>` : "") +
+    `<div class="note" style="margin:14px 0 6px">
+       以下是本週全部 ${rows.length} 題的逐題對照。` +
+       (hasPoint < rows.length
+         ? `<b>本週 ${rows.length} 題只有 ${hasPoint} 題有考點標註</b>，其餘顯示題幹，不是考點。`
+         : "") +
     `</div>
      <table><thead><tr>
-       <th style="width:26px">#</th><th style="width:74px">題型</th><th>考點</th>
+       <th style="width:26px">#</th><th style="width:74px">題型</th><th>考點／題幹</th>
        <th style="width:64px">${esc((rA && rA.name) || STUDENTS[0][1])}</th>
        <th style="width:64px">${esc((rB && rB.name) || STUDENTS[1][1])}</th>
      </tr></thead><tbody>` +
      rows.map(r =>
        `<tr class="${r.bothOpen ? "both" : ""}">
-          <td>${r.i + 1}</td><td>${esc(r.sub)}</td>
-          <td class="k" title="${esc(r.stem)}">${esc(r.stem)}…</td>
+          <td>${r.i + 1}</td><td>${esc(r.sub)}</td>${cell(r)}
           <td>${pillOf(r.a)}</td><td>${pillOf(r.b)}</td>
         </tr>`).join("") +
      `</tbody></table>`;
