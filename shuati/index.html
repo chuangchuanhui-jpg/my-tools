@@ -407,7 +407,15 @@ function sync(){
   // 老師端看板要的是「這一週的每一題怎麼樣」。tries/wrong 直接用累計作答次數，
   // streak 用佇列裡的連對數；已攻克＝不在佇列、且首答有紀錄。
   const inW = (IDX.byWeek[w] || []);
-  const seeds = inW.map(q => {
+  // ⚠️ 訂正時抽到的變形題不在 IDX.byWeek 裡（tag=variant），但它們是這一週實際的
+  //    練習成果。舊版只傳 inW，於是老師端永遠看不到學生訂正時做的題。
+  //    實例：2026-09-04 蔡孟甫第 8 週，成績碼有 46 題、後端只有 41 題，
+  //    差的 5 題全是變形題，那 5 題還貢獻了 6 次答錯。要「列錯題檢討」就不能漏。
+  const extraK = new Set();
+  for(const e of (ST.log || [])) if((e.sw ?? e.w) === w) extraK.add(e.k);
+  for(const q of inW) extraK.delete(q.k);
+  const extra = [...extraK].map(k => IDX.byK[k]).filter(Boolean);
+  const seeds = inW.concat(extra).map(q => {
     const rec = ST.q[q.k] || {r:0, w:0, first:null};
     const e = ST.queue.find(x => x.k === q.k);
     return {k:q.k, sub:q.sub, stem:(q.stem||"").slice(0,22),
@@ -418,6 +426,7 @@ function sync(){
             streak: e ? (e.streak||0) : (rec.first !== null ? ST.need : 0),
             tries: rec.r + rec.w, wrong: rec.w,
             first: rec.first,                              // 首答對錯（石頭帳，重做洗不白）
+            variant: q.tag !== "bank",                     // 訂正時做的變形題／兄弟題
             review: !!(ST.review || {})[q.k]};             // 連錯 2 次已退場、待老師檢討
   });
   const body = JSON.stringify({
@@ -428,6 +437,7 @@ function sync(){
     need: ST.need,                                   // 老師端顯示 streak/need，不要寫死 2
     reviewN: Object.keys(ST.review || {}).length,    // 累計退場待檢討題數
     logTrimmed: ST.logTrimmed || 0,                  // >0 代表有紀錄被裁掉，老師端要示警
+    audit: ST.audit || freshAudit(),                 // 歸零／匯入的痕跡，老師端要示警
     seeds, ts: Date.now()
   });
   // text/plain 才不會觸發 CORS 預檢（Apps Script 不處理 OPTIONS）；
@@ -453,8 +463,13 @@ function paintSync(){
 function freshState(){
   return {v:3, need:1, mode:"practice", week:1, round:0, sid:"", name:"",
           q:{}, log:[], days:[], queue:[], mastered:{}, flagged:[], review:{},
-          answered:0, correct:0, logTrimmed:0};
+          answered:0, correct:0, logTrimmed:0, audit:freshAudit()};
 }
+// ── 稽核軌跡 ────────────────────────────────────────
+// 「全部重來」會把 q 與 log 清光，學生重刷一遍首答就全新——這是最容易的作弊路徑。
+// 在瀏覽器裡不可能防死（能開開發者工具就能改 localStorage），所以改成
+// 「痕跡洗不掉、老師一眼看得到」：歸零與匯入的次數跨越歸零保留，並同步給老師。
+function freshAudit(){ return {resets:0, imports:0, lastReset:"", lastImport:"", lostFirst:0}; }
 // ── v2 → v3 遷移（2026-09-05）────────────────────────────────
 // 規則從「連對 2 次才算攻克、錯題重複到攻克為止」改成
 // 「答對 1 次即攻克、連錯 2 次退場交給老師檢討」（使用者 2026-09-04 裁示）。
@@ -1148,6 +1163,15 @@ function renderTeach(st){
 //    k 取前 8 碼：實測 884 題全部唯一（見 harness 的唯一性測試）。
 const CODE_VER = "GW1";
 const B36 = n => Math.min(35, n | 0).toString(36);
+// 成績碼校驗和。防的是「傳給老師之前把 0 改成 1」這種隨手竄改；
+// ⚠️ 擋不住真的去讀這份 JS 把演算法照抄一遍的人——前端程式碼是公開的，
+//    這一點做不到，也不該假裝做得到。它的作用是讓「隨手改」一定會被抓到。
+const CODE_SALT = "guowen-2026";
+function sigOf(s){
+  let h = 0x811c9dc5;                                  // FNV-1a
+  for(let i = 0; i < s.length; i++){ h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+  return h.toString(36).padStart(7, "0").slice(-7);
+}
 
 function packWeek(w){
   const rows = [], done = new Set();
@@ -1162,13 +1186,18 @@ function packWeek(w){
   const queue = ST.queue.filter(e => done.has(e.k) ||
                                      (IDX.byK[e.k]||{}).week === w)
                         .map(e => e.k.slice(0,8)).join("");
-  return [CODE_VER, w, new Date().toISOString().slice(0,10).replace(/-/g,""),
-          rows.join(""), queue].join("|");
+  const body = [CODE_VER, w, new Date().toISOString().slice(0,10).replace(/-/g,""),
+                rows.join(""), queue].join("|");
+  return body + "|" + sigOf(CODE_SALT + body);
 }
 // 老師端：把碼還原成一份「假的進度」，讓既有的統計函式原封不動可以吃
 function unpackWeek(code){
   const p = String(code).trim().split("|");
   if(p[0] !== CODE_VER || p.length < 4) return null;
+  // 校驗和：ok＝對得上；bad＝被改過；none＝舊版的碼（沒有校驗和欄位）
+  const sig = p.length >= 6
+    ? (p[5] === sigOf(CODE_SALT + p.slice(0, 5).join("|")) ? "ok" : "bad")
+    : "none";
   const week = +p[1], log = [], q = {}, queue = [];
   const body = p[3] || "";
   for(let i = 0; i + 11 <= body.length; i += 11){
@@ -1191,7 +1220,7 @@ function unpackWeek(code){
     const full = IDX.byK8[qs.slice(i, i+8)];
     if(full) queue.push({k:full.k, streak:0, used:[], added:0});
   }
-  return Object.assign(freshState(), {week, q, log, queue,
+  return Object.assign(freshState(), {week, q, log, queue, sig,
     answered: log.length, correct: log.filter(e => e.o).length});
 }
 
@@ -1278,10 +1307,16 @@ function doImport(){
     // ⚠️ 匯入是「把備份倒回自己的格子」，不是「變成另一個人」。
     //    不保住現用身分的話，在甲的手機上匯入乙的備份，會直接蓋掉乙在這台裝置的紀錄。
     const keepSid = ST.sid, keepName = ST.name;
+    // 稽核欄位以「這台裝置原本的」為準，不吃匯入內容裡的——否則貼一份
+    // audit 歸零的假資料就把痕跡洗掉了。
+    const a = Object.assign(freshAudit(), ST.audit || {});
+    a.imports = (a.imports || 0) + 1;
+    a.lastImport = new Date().toISOString().slice(0, 16).replace("T", " ");
     ST = migrate(Object.assign(freshState(), s));
     if(keepSid){ ST.sid = keepSid; ST.name = keepName; }
-    saveState(); renderHome();
-    alert("匯入成功！");
+    ST.audit = a;
+    saveState(); sync(); renderHome();
+    alert("匯入成功！（匯入這件事會記錄給老師看）");
   }catch(e){ alert("匯入失敗：內容不是有效的進度碼"); }
 }
 
@@ -1313,7 +1348,11 @@ async function boot(){
     const m = raw.match(/GW1\|[^\s]+/);
     if(m){
       const s = unpackWeek(m[0]);
-      if(s){ renderTeach(s); return; }
+      if(s){
+        if(s.sig === "bad") alert("⚠️ 這份成績碼的校驗和對不上——內容被改過。\n下面的數字不可信。");
+        else if(s.sig === "none") alert("提醒：這是舊版的成績碼，沒有校驗和，無法確認有沒有被改過。");
+        renderTeach(s); return;
+      }
     }
     try{                                    // 舊版的完整 JSON 進度碼也照收
       const s = JSON.parse(raw);
@@ -1332,8 +1371,19 @@ async function boot(){
   $("btnDoImport").onclick = doImport;
   // 歸零只清「這個人」的紀錄，身分保留——否則歸零後 sid 變空，
   // 下次存檔會落回舊格子，另一個孩子的那一格也還在，狀態會很混亂。
-  $("btnReset").onclick = () => { if(confirm(`確定把「${ST.name || "這個人"}」的進度歸零？紀錄會全部消失。`)){
-    ST = Object.assign(freshState(), {sid: ST.sid, name: ST.name}); saveState(); renderHome(); } };
+  $("btnReset").onclick = () => {
+    const n = Object.keys(ST.q || {}).length;
+    if(!confirm(`確定把「${ST.name || "這個人"}」的進度歸零？\n\n`
+              + `${n} 題的作答紀錄會全部消失，而且救不回來。\n`
+              + `（歸零這件事會記錄下來給老師看，不會消失。）`)) return;
+    // 稽核欄位跨越歸零保留——歸零本身就是要被看見的事。
+    const a = Object.assign(freshAudit(), ST.audit || {});
+    a.resets = (a.resets || 0) + 1;
+    a.lastReset = new Date().toISOString().slice(0, 16).replace("T", " ");
+    a.lostFirst = (a.lostFirst || 0) + n;
+    ST = Object.assign(freshState(), {sid: ST.sid, name: ST.name, audit: a});
+    saveState(); sync(); renderHome();
+  };
   renderHome(); show("scr-home");
   if(SYNC_URL && !ST.sid) askWho();      // 第一次進來先認人，老師端才分得出是誰
 }
