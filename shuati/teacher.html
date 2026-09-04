@@ -243,12 +243,28 @@ function paintDiag(){
   if(!lastOk){ el.innerHTML = `尚未成功取得任何回應。`; return; }
   const newest = ROWS.reduce((m, r) => (r.ts > (m ? m.ts : 0) ? r : m), null);
   const trimmed = ROWS.filter(r => (r.logTrimmed || 0) > 0);
+  // 稽核警訊：歸零與匯入是學生洗掉錯誤紀錄最容易的兩條路。這裡把痕跡攤開，
+  // 每位學生只看最新一列的 audit（同一台裝置的累計值）。
+  const auditByStu = {};
+  for(const r of ROWS){
+    const a = r.audit; if(!a) continue;
+    const cur = auditByStu[r.sid];
+    if(!cur || r.ts > cur.ts) auditByStu[r.sid] = {ts:r.ts, name:r.name || r.sid, a};
+  }
+  const flags = Object.values(auditByStu)
+    .filter(x => (x.a.resets || 0) > 0 || (x.a.imports || 0) > 0)
+    .map(x => `${esc(x.name)}：`
+      + ((x.a.resets || 0) ? `歸零過 <b>${x.a.resets}</b> 次（最後 ${esc(x.a.lastReset || "?")}，`
+          + `丟掉 ${x.a.lostFirst || 0} 題紀錄）` : "")
+      + ((x.a.imports || 0) ? `${(x.a.resets||0) ? "、" : ""}匯入過 <b>${x.a.imports}</b> 次`
+          + `（最後 ${esc(x.a.lastImport || "?")}）` : ""));
   el.innerHTML =
     `後端最後成功回應：${ago(Date.now() - lastOk)}　·　表內 ${ROWS.length} 列　·　` +
     (newest ? `最新一列：${esc(newest.name || newest.sid)} 第 ${newest.week} 週，${ago(Date.now() - newest.ts)}`
             : `<b>表是空的——後端正常，但一位學生的資料都沒收到</b>`) +
     (trimmed.length ? `<br><b style="color:var(--bad)">⚠ ${trimmed.map(r => esc(r.name || r.sid)).join("、")}
-      的作答紀錄有被裁掉（超過上限），早期週次的統計可能不完整。</b>` : "");
+      的作答紀錄有被裁掉（超過上限），早期週次的統計可能不完整。</b>` : "") +
+    (flags.length ? `<br><b style="color:var(--bad)">⚠ 進度被重置或匯入過 —— ${flags.join("；")}</b>` : "");
 }
 
 /* ── 畫面 ──────────────────────────────────────── */
