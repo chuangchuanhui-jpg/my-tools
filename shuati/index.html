@@ -248,7 +248,6 @@ textarea{width:100%; min-height:74px; border:1px solid var(--line); border-radiu
     <h2>設定與備份</h2>
     <div style="font-size:15px; margin-bottom:11px">
       我是：<span id="whoName" style="font-weight:700"></span>
-      <button class="ghost" id="btnWho" style="margin-left:8px; padding:5px 12px; font-size:13px">換人</button>
       <div class="note" id="syncNote" style="margin-top:4px"></div>
     </div>
     <div style="font-size:15px; margin-bottom:11px">
@@ -473,7 +472,7 @@ function freshState(){
 // 「全部重來」會把 q 與 log 清光，學生重刷一遍首答就全新——這是最容易的作弊路徑。
 // 在瀏覽器裡不可能防死（能開開發者工具就能改 localStorage），所以改成
 // 「痕跡洗不掉、老師一眼看得到」：歸零與匯入的次數跨越歸零保留，並同步給老師。
-function freshAudit(){ return {resets:0, imports:0, lastReset:"", lastImport:"", lostFirst:0}; }
+function freshAudit(){ return {resets:0, imports:0, switches:0, lastReset:"", lastImport:"", lastSwitch:"", lostFirst:0}; }
 // ── v2 → v3 遷移（2026-09-05）────────────────────────────────
 // 規則從「連對 2 次才算攻克、錯題重複到攻克為止」改成
 // 「答對 1 次即攻克、連錯 2 次退場交給老師檢討」（使用者 2026-09-04 裁示）。
@@ -906,31 +905,57 @@ function renderHome(){
   $("whoName").textContent = ST.sid ? `${ST.name}（${ST.sid}）` : "還沒選";
   paintSync();
 }
+// ── 認人 ────────────────────────────────────────────
+// ⚠️ 2026-09-05 拿掉畫面上的「換人」按鈕。使用者確認兩個孩子各有自己的裝置、
+//    不共用，所以「切換使用者」沒有日常用途；留著反而是一個入口——學生可以
+//    切成對方的名字亂答，那些資料會掛在對方名下送出去，而後端以（學生＋週次）
+//    為鍵、後寫的蓋前面的，等於能覆蓋掉對方真正的紀錄。
+//
+//    身分現在只有兩條路會被設定：
+//      ① 第一次進來、還沒認過人 —— boot() 自動問一次
+//      ② 網址帶 ?who=A —— 老師專用的補救入口，畫面上找不到
+//    兩者都會寫進稽核軌跡，老師端看得到。
+//
+//    ⚠️ 這擋得住「隨手切換」，擋不住會開開發者工具直接改 localStorage 的人。
+//       前端程式碼是公開的，這點做不到，也不該假裝做得到。
+function setWho(sid, how){
+  const row = STUDENTS.find(x => x[0] === sid);
+  if(!row) return false;
+  const name = row[1];
+  if(ST.sid === sid){ ST.name = name; saveState(); sync(); renderHome(); return true; }
+
+  const a = Object.assign(freshAudit(), ST.audit || {});
+  if(ST.sid){
+    // 真的換人：先把目前這個人的進度存回他自己的格子，再讀出目標學生自己的那份。
+    // 目標學生沒有紀錄就給全新的，不繼承任何人。
+    saveState();
+    a.switches = (a.switches || 0) + 1;
+    a.lastSwitch = `${ST.sid}→${sid} ${new Date().toISOString().slice(0,16).replace("T"," ")}（${how}）`;
+    ST = readSlot(keyFor(sid)) || Object.assign(freshState(), {sid: sid, name: name});
+  }
+  // 還沒認過人的情況：目前這份進度就歸他（例如先刷了幾題才點名字）
+  ST.sid = sid; ST.name = name;
+  ST.audit = Object.assign(freshAudit(), ST.audit || {}, {
+    switches: a.switches || 0, lastSwitch: a.lastSwitch || "",
+  });
+  saveState(); sync(); renderHome();
+  return true;
+}
+
 function askWho(){
   const list = STUDENTS.map((x,i) => `${i+1}. ${x[1]}`).join("\n");
   const pick = prompt(`你是誰？輸入號碼：\n${list}`, "1");
   const i = parseInt(pick, 10) - 1;
   if(!(i >= 0 && i < STUDENTS.length)) return;
-  const sid = STUDENTS[i][0], name = STUDENTS[i][1];
+  setWho(STUDENTS[i][0], "第一次認人");
+}
 
-  if(ST.sid === sid){ ST.name = name; saveState(); sync(); renderHome(); return; }
-
-  if(!ST.sid){
-    // 還沒認過人：目前這份進度就歸他（例如先刷了幾題才點名字）
-    ST.sid = sid; ST.name = name; saveState(); sync(); renderHome(); return;
-  }
-
-  // ⚠️ 真的換人。舊版到這裡只改 sid 與 name、其餘原封不動，於是同一份成績
-  //    被貼上另一個人的名字再送一次——2026-09-04 的 A|8 / B|8 就是這樣來的
-  //    （41 題逐題完全相同、round 同為 61、相隔 1 分鐘）。
-  //    現在：先把目前這個人的進度存回他自己的格子，再讀出目標學生自己的那一份；
-  //    目標學生沒有紀錄就給全新的，不繼承任何人。
-  if(!confirm(`要從「${ST.name}」切換成「${name}」嗎？\n\n`
-            + `兩個人的進度會分開保存，不會互相蓋掉。切回來也拿得回原本的紀錄。`)) return;
-  saveState();
-  ST = readSlot(keyFor(sid)) || Object.assign(freshState(), {sid: sid, name: name});
-  ST.sid = sid; ST.name = name;
-  saveState(); sync(); renderHome();
+// 老師專用的補救入口：網址後面加 ?who=A。孩子在畫面上找不到這個入口。
+function whoFromURL(){
+  try{
+    const m = String(location.search || "").match(/[?&]who=([A-Za-z0-9_-]+)/);
+    return m ? m[1] : null;
+  }catch(e){ return null; }
 }
 
 // ── 作答 ───────────────────────────────────────────
@@ -1330,7 +1355,6 @@ async function boot(){
   DB = await (await fetch("questions.json", {cache:"no-store"})).json();
   buildIndex();
   ST = loadState();
-  $("btnWho").onclick = askWho;
   $("btnGo").onclick = () => startRound(false);
   $("btnDrill").onclick = () => startRound(true);
   $("btnNext").onclick = nextQ;
@@ -1389,7 +1413,10 @@ async function boot(){
     saveState(); sync(); renderHome();
   };
   renderHome(); show("scr-home");
-  if(SYNC_URL && !ST.sid) askWho();      // 第一次進來先認人，老師端才分得出是誰
+  // 老師給的補救網址（?who=A）優先；否則第一次進來自動問一次。
+  const forced = whoFromURL();
+  if(forced && setWho(forced, "老師用網址指定")){ /* 已處理 */ }
+  else if(SYNC_URL && !ST.sid) askWho();   // 第一次進來先認人，老師端才分得出是誰
 }
 boot().catch(e => { document.body.innerHTML = "<p style='padding:30px'>題庫載入失敗，請重新整理。<br>" + e + "</p>"; });
 </script>
