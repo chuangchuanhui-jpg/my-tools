@@ -257,7 +257,11 @@ function paintDiag(){
       + ((x.a.resets || 0) ? `歸零過 <b>${x.a.resets}</b> 次（最後 ${esc(x.a.lastReset || "?")}，`
           + `丟掉 ${x.a.lostFirst || 0} 題紀錄）` : "")
       + ((x.a.imports || 0) ? `${(x.a.resets||0) ? "、" : ""}匯入過 <b>${x.a.imports}</b> 次`
-          + `（最後 ${esc(x.a.lastImport || "?")}）` : ""));
+          + `（最後 ${esc(x.a.lastImport || "?")}）` : "")
+      // 換人：畫面上的按鈕已移除，正常情況這個數字永遠是 0。
+      // 一旦不是 0，代表有人動用了 ?who= 網址——不是你自己做的就要問一下。
+      + ((x.a.switches || 0) ? `${(x.a.resets||0)||(x.a.imports||0) ? "、" : ""}`
+          + `<b>換過身分 ${x.a.switches} 次</b>（最後 ${esc(x.a.lastSwitch || "?")}）` : ""));
   el.innerHTML =
     `後端最後成功回應：${ago(Date.now() - lastOk)}　·　表內 ${ROWS.length} 列　·　` +
     (newest ? `最新一列：${esc(newest.name || newest.sid)} 第 ${newest.week} 週，${ago(Date.now() - newest.ts)}`
