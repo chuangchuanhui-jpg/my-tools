@@ -431,7 +431,11 @@ function sync(){
   });
   const body = JSON.stringify({
     sid: ST.sid, name: ST.name, week: w, round: ST.round,
-    done: seeds.filter(x => x.done).length, total: seeds.length,
+    // ⚠️ 分母只能是「這一週的正式題數」。2026-09-05 把訂正時做的變形題也放進
+    //    seeds 之後，這裡一度寫成 seeds.length，變形題被算進分母，老師端看到的
+    //    完成度就被稀釋了（實例：第 2 週 38 題變成 39/61）。
+    //    變形題要在明細裡看得到，但不能影響「攻克 x/y」。
+    done: seeds.filter(x => x.done && !x.variant).length, total: inW.length,
     answered: s.done, correct: Math.round((s.pct || 0) * s.done / 100),
     inRound: RUN ? {i: RUN.i + 1, n: RUN.items.length} : null,
     need: ST.need,                                   // 老師端顯示 streak/need，不要寫死 2
