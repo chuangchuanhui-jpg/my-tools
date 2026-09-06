@@ -342,18 +342,25 @@ function renderOverview(wk){
     }
     for(const r of mine){
       any = true;
+      // ⚠️ 2026-09-06：把「做完」擺到最顯眼的位置。
+      //    舊版只顯示「攻克 x/y」，而攻克＝答對且已脫離錯題佇列，
+      //    跟「有沒有刷完」是兩回事——41 題全做完但只攻克 27 題，
+      //    舊版顯示「27/41」，看起來像還有 14 題沒做。我自己就讀錯過。
+      const fin = r.answered || 0;                       // 做完幾題（首答過）
+      const finPct = r.total ? Math.round(fin / r.total * 100) : 0;
       const pct = r.total ? Math.round(r.done / r.total * 100) : 0;
       const acc = r.answered ? Math.round(r.correct / r.answered * 100) : null;
       const b = document.createElement("button");
-      // 底色條看的是「攻克率」，不是答對率：答對率高但只做兩題不算做完。
-      b.className = "ovt " + (pct >= 90 ? "" : pct >= 50 ? "part" : "low")
-                    + (Number(r.week) === wk ? " on" : "") + (pct < 10 ? " off" : "");
+      // 底色條改看「做完率」——這一格要回答的問題是「刷完了沒」。
+      b.className = "ovt " + (finPct >= 100 ? "" : finPct >= 50 ? "part" : "low")
+                    + (Number(r.week) === wk ? " on" : "") + (finPct < 10 ? " off" : "");
       b.innerHTML = `<b>第 ${r.week} 週</b>
-        <span>攻克 ${r.done}/${r.total}</span>
-        <span>答對 ${acc == null ? "–" : acc + "%"}</span>
-        <i style="width:${pct}%"></i>`;
-      b.title = `第 ${r.week} 週：攻克 ${r.done}/${r.total}（${pct}%）、`
-              + `首答 ${r.answered} 題、最後同步 ${ago(Date.now() - (r.ts || 0))}`;
+        <span>${finPct >= 100 ? "✓ 刷完" : `做完 ${fin}/${r.total}`}</span>
+        <span>攻克 ${r.done}　答對 ${acc == null ? "–" : acc + "%"}</span>
+        <i style="width:${finPct}%"></i>`;
+      b.title = `第 ${r.week} 週：做完 ${fin}/${r.total}（${finPct}%）、`
+              + `攻克 ${r.done}/${r.total}、首答答對率 ${acc == null ? "–" : acc + "%"}、`
+              + `最後同步 ${ago(Date.now() - (r.ts || 0))}`;
       b.onclick = () => { WEEK = Number(r.week); pickWeek(); };
       tiles.appendChild(b);
     }
@@ -361,7 +368,8 @@ function renderOverview(wk){
     box.appendChild(row);
   }
   $("ovNote").textContent = any
-    ? "點任一格可以切到那一週的逐題對照。底線長度＝攻克率；只做幾題的格子會變淡。"
+    ? "點任一格可以切到那一週的逐題對照。底線長度＝做完的比例。"
+      + "「做完」＝這一週的題碰過幾題；「攻克」＝答對且已脫離錯題佇列。兩者不同。"
     : "後端正常，但一位學生的資料都沒收到。可能是還沒刷，也可能是送不出去——請學生按「匯出進度給老師」就能分辨。";
 }
 
@@ -428,6 +436,8 @@ function render(){
         <div class="empty">${msg}</div>`;
       cols.appendChild(d); continue;
     }
+    const fin = r.answered || 0;
+    const finPct = r.total ? Math.round(fin / r.total * 100) : 0;
     const pct = r.total ? Math.round(r.done / r.total * 100) : 0;
     const acc = r.answered ? Math.round(r.correct / r.answered * 100) : null;
     const age = Date.now() - (r.ts || 0);
@@ -435,12 +445,13 @@ function render(){
     d.innerHTML =
       `<h3>${esc(r.name || fallback)}</h3>
        <div class="meta">第 ${r.week} 週 · 已練 ${r.round} 輪 · ${stale ? Math.round(age/60000) + " 分鐘前" : "作答中"}</div>
-       <div class="bar"><i style="width:${pct}%"></i></div>
-       <div class="meta">攻克 ${r.done} / ${r.total} 個考點（${pct}%）</div>
+       <div class="bar"><i style="width:${finPct}%"></i></div>
+       <div class="meta">${finPct >= 100 ? "✓ 這一週的題已經刷完" : `還有 ${r.total - fin} 題沒做`}
+         　·　攻克 ${r.done} / ${r.total} 個考點</div>
        <div class="kpi">
-         <div><b>${r.round}</b><span>輪數</span></div>
+         <div><b>${fin}/${r.total}</b><span>做完</span></div>
          <div><b>${r.done}/${r.total}</b><span>攻克</span></div>
-         <div><b>${acc == null ? "–" : acc + "%"}</b><span>本週答對率</span></div>
+         <div><b>${acc == null ? "–" : acc + "%"}</b><span>首答答對率</span></div>
        </div>` +
       (r.inRound && !stale
         ? `<div class="now">正在作答：第 ${r.inRound.i} / ${r.inRound.n} 題</div>`
