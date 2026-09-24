@@ -201,6 +201,14 @@ textarea{width:100%; min-height:74px; border:1px solid var(--line); border-radiu
 
 <!-- ═══ 首頁 ═══ -->
 <div id="scr-home">
+  <!-- 2026-09-21 新增：進度讀不到／被大量覆蓋時，一定要講出來。
+       舊版這種事完全是靜默的，學生只看到「已完成 0/20 週」，不知道要找老師。 -->
+  <div class="card hidden" id="lostCard"
+       style="border:2px solid var(--bad); background:var(--bad-bg)">
+    <div style="font-weight:800; color:var(--bad); font-size:17px; margin-bottom:6px">
+      ⚠️ 進度讀不到了</div>
+    <div id="lostMsg" style="font-size:15px; line-height:1.7"></div>
+  </div>
   <div class="card">
     <div class="hero">
       <div class="ring" id="ring"></div>
@@ -365,6 +373,12 @@ const LS_KEY  = "guowen_shuati_v2";                // 舊的單一格子；只�
 const LS_LAST = "guowen_shuati_v2_last";           // 這台裝置上次是誰在用
 const keyFor  = sid => LS_KEY + ":" + sid;         // 每人一個格子
 const LS_BAK = "guowen_shuati_v2_backup_pre_v3";   // v2→v3 遷移前的整包備份，只寫一次
+// ⚠️ 2026-09-21 新增。起因：蔡孟甫（B）第 1~10 週的進度在 9/12~9/19 之間整份消失，
+//    後端 9/19 18:29 收到一列 round=0、答題 0 的全新狀態，把第 1 週的歷史覆蓋掉。
+//    當時三道關卡全是靜默的：讀不到格子 → 當成新人；存檔 → 直接覆寫；
+//    同步 → 把空白送上去蓋掉老師端。下面兩個鍵是「殘骸保管處」，只寫一次、不覆蓋。
+const bakBroken = sid => keyFor(sid) + ":broken";  // 讀不出來的原始字串（JSON 壞了之類）
+const bakPrev   = sid => keyFor(sid) + ":prev";    // 被「幾乎空白的狀態」覆蓋掉之前的最後一份
 const ROUND_N = 10, MAX_REDO_PER_ROUND = 5;
 // 連錯幾次就退場、標記待檢討交給老師（2026-09-04 使用者裁示）。
 // 理由：變形題只覆蓋 5.3% 的題（859 題中 42 題有變形題），重複出現的多半是
@@ -402,6 +416,15 @@ async function loadConfig(){
 }
 function sync(){
   if(!SYNC_URL || !ST.sid){ syncState = "off"; paintSync(); return; }
+  // ⚠️ 2026-09-21 加。後端是「同一個 sid|week 覆寫同一列」，沒有歷史版本，
+  //    所以送一列空白上去＝把老師端那一週的紀錄永久刪掉。
+  //    實際發生過：2026-09-19 18:29 蔡孟甫的手機在進度不見之後認了一次人，
+  //    setWho() 對一個 0 題的全新狀態呼叫 sync()，B|1 那一列（第 1 週）就被
+  //    round=0、答題 0 的空白蓋掉，再也回不來。
+  //    空白快照對老師端零資訊、卻會毀掉既有紀錄，一律不送。
+  if(!(ST.log || []).length && !Object.keys(ST.q || {}).length){
+    syncState = "off"; paintSync(); return;
+  }
   const w = ST.week || 1, s = weekStat(ST, w);
   // 老師端看板要的是「這一週的每一題怎麼樣」。tries/wrong 直接用累計作答次數，
   // streak 用佇列裡的連對數；已攻克＝不在佇列、且首答有紀錄。
@@ -472,7 +495,8 @@ function freshState(){
 // 「全部重來」會把 q 與 log 清光，學生重刷一遍首答就全新——這是最容易的作弊路徑。
 // 在瀏覽器裡不可能防死（能開開發者工具就能改 localStorage），所以改成
 // 「痕跡洗不掉、老師一眼看得到」：歸零與匯入的次數跨越歸零保留，並同步給老師。
-function freshAudit(){ return {resets:0, imports:0, switches:0, lastReset:"", lastImport:"", lastSwitch:"", lostFirst:0}; }
+function freshAudit(){ return {resets:0, imports:0, switches:0, lastReset:"", lastImport:"", lastSwitch:"", lostFirst:0,
+                              lostSlot:0, lastLost:""}; }   // lostSlot＝開機時讀不到自己的格子的次數
 // ── v2 → v3 遷移（2026-09-05）────────────────────────────────
 // 規則從「連對 2 次才算攻克、錯題重複到攻克為止」改成
 // 「答對 1 次即攻克、連錯 2 次退場交給老師檢討」（使用者 2026-09-04 裁示）。
@@ -531,6 +555,9 @@ function migrateSlots(){
   }catch(e){}
 }
 
+// 開機時偵測到的異常，renderHome() 會顯著顯示，sync() 也會送給老師。
+// 空字串＝一切正常。
+let BOOT_LOST = "";
 function loadState(){
   migrateSlots();
   let last = null;
@@ -538,6 +565,24 @@ function loadState(){
   if(last){
     const s = readSlot(keyFor(last));
     if(s) return s;
+    // ⚠️ 2026-09-21 新增。走到這裡＝「這台裝置上次是 X 在用」還在，X 自己的格子卻讀不出來。
+    //    這一定是出事了（內容壞掉、被部分清掉、或 localStorage 暫時讀不到），
+    //    舊版在這裡直接掉進 freshState()，學生被問一次「你是誰」，然後：
+    //      ① 第一次存檔就把那個格子覆寫掉，殘骸永久消失；
+    //      ② 第一次同步把一列空白送上去，老師端那一週的歷史也被蓋掉。
+    //    （2026-09-19 蔡孟甫第 1 週就是這樣沒的：後端只剩 round=0、答題 0 的一列。）
+    //    現在改成：殘骸留著、記一筆、身分照舊帶回去，不再問「你是誰」。
+    let raw = null;
+    try{ raw = localStorage.getItem(keyFor(last)); }catch(e){}
+    if(raw){          // 有東西但讀不出來＝內容壞了，原始字串只存一次、不覆蓋
+      try{ if(!localStorage.getItem(bakBroken(last))) localStorage.setItem(bakBroken(last), raw); }catch(e){}
+    }
+    BOOT_LOST = raw ? "進度檔壞了" : "進度檔不見了";
+    const row = STUDENTS.find(x => x[0] === last);
+    const a = freshAudit();
+    a.lostSlot = 1;
+    a.lastLost = `${last} ${new Date().toISOString().slice(0,16).replace("T"," ")}（${BOOT_LOST}）`;
+    return Object.assign(freshState(), {sid: last, name: row ? row[1] : "", audit: a});
   }
   // 還沒認過人的情況（先刷了幾題才點名字）：沿用舊格子。
   // 已經有 sid 的舊格子在上面就搬走了，不會走到這裡。
@@ -546,10 +591,36 @@ function loadState(){
   return freshState();
 }
 
+// ⚠️ 2026-09-21 新增的護欄：不准用「幾乎空白的狀態」直接覆蓋「有料的格子」。
+//    這是進度真正消失的最後一道門——前面不管是讀檔壞掉、誤按歸零、還是換人搞錯，
+//    只要舊的那串還在 localStorage 裡，覆蓋之前先原封不動存進 :prev，就救得回來。
+//    只存一次、不覆蓋：第二次以後的覆蓋不能把備份也洗成新的空白。
+//    判準用「題數少了一半以上」而不是「新的是不是空的」——歸零後又刷了幾題才存檔
+//    的情況也要擋得住。
+let INTENDED_WIPE = false;     // 只有「全部重來」會把它打開，用完立刻關
+function guardOverwrite(key){
+  let raw = null;
+  try{ raw = localStorage.getItem(key); }catch(e){ return; }
+  if(!raw) return;
+  let old;
+  try{ old = JSON.parse(raw); }catch(e){ return; }          // 本來就壞掉的不用備份
+  const oldN = old && typeof old.q === "object" ? Object.keys(old.q).length : 0;
+  const newN = Object.keys(ST.q || {}).length;
+  if(oldN < 10 || newN * 2 > oldN) return;                  // 沒大量減少＝正常寫入
+  try{
+    if(!localStorage.getItem(bakPrev(ST.sid))) localStorage.setItem(bakPrev(ST.sid), raw);
+  }catch(e){}
+  if(INTENDED_WIPE) return;                                 // 學生自己按的歸零：備份照做，不算意外
+  const a = (ST.audit ||= freshAudit());
+  a.lostSlot = (a.lostSlot || 0) + 1;
+  a.lastLost = `${ST.sid} ${new Date().toISOString().slice(0,16).replace("T"," ")}（${oldN}→${newN} 題，已備份）`;
+}
 function saveState(){
   try{
     // 有身分就存進自己的格子；還沒認人就先放在舊格子，等點名字時再歸戶。
-    localStorage.setItem(ST.sid ? keyFor(ST.sid) : LS_KEY, JSON.stringify(ST));
+    const key = ST.sid ? keyFor(ST.sid) : LS_KEY;
+    if(ST.sid) guardOverwrite(key);
+    localStorage.setItem(key, JSON.stringify(ST));
     if(ST.sid) localStorage.setItem(LS_LAST, ST.sid);
   }catch(e){}
 }
@@ -898,6 +969,14 @@ function renderHome(){
     r.checked = (r.value === ST.mode);
     r.onchange = () => { ST.mode = r.value; saveState(); };
   });
+  // 進度異常警示：開機讀不到格子（BOOT_LOST），或曾經被空白狀態覆蓋（audit.lostSlot）。
+  const lost = BOOT_LOST || ((ST.audit || {}).lostSlot ? "進度檔曾經出過問題" : "");
+  $("lostCard").classList.toggle("hidden", !lost);
+  if(lost){
+    $("lostMsg").innerHTML = `這台手機上的${esc(lost)}，畫面上的週次進度不是你真正的進度。` +
+      `<br><b>先別急著重刷</b>——老師那邊留有同步紀錄，可以幫你補回來。` +
+      `<br>請截這張圖給老師。${(ST.audit||{}).lastLost ? `<br><span class="note">${esc(ST.audit.lastLost)}</span>` : ""}`;
+  }
   $("flaggedNote").textContent = ST.flagged.length ? `已回報 ${ST.flagged.length} 題有問題（老師看得到）` : "";
   // 認人靠代號（sid），不靠名字：老師在 config.json 改名字不會弄丟進度。
   const me = STUDENTS.find(x => x[0] === ST.sid);
@@ -1264,19 +1343,29 @@ function weekReport(w){
   //   extra ＝ 錯題再挑戰時額外做到的變形題／兄弟題（不在本週課表上）
   const inWeek = new Set(ST.log.filter(e => (e.sw ?? e.w) === w).map(e => e.k));
   const extra = [...inWeek].filter(k => (IDX.byK[k]||{}).week !== w).length;
-  const allStat = firstStats(ST, e => (e.sw ?? e.w) === w);
+  const allStat = firstStats(ST, e => (e.sw ?? e.w) === w);   // 這一週的場次裡第一次作答的題
+  const weekAcc = firstStats(ST, e => e.w === w);             // 課表上屬於這一週的題（＝首頁與老師端的口徑）
   const L = [
     `【國文刷題・第 ${w} 週報告】`,
     `難度階段：${info.phase}`,
     `完成日期：${new Date().toISOString().slice(0,10)}`,
     ``,
+    // ⚠️ 2026-09-21 改。這裡本來只印一個「首答正確率」，用的是 e.sw（學生在這一週的場次裡
+    //    第一次作答的題），而首頁與老師端（teacher.html／看進度.py）用的是 e.w（課表上屬於
+    //    這一週的題）。兩個都叫「正確率」、都掛在同一週，數字卻不一樣，老師根本對不起來：
+    //      2026-09-19 蔡孟甫 第 12 週　首頁 56%（20/36）↔ 報告 51%（20/39）
+    //      2026-09-19 蔡孟成 第 12 週　同步 73%（27/37）↔ 報告 68%（25/37）★ 分母還一樣
+    //    不能只留一個——兩個都有用（一個是課表達成度，一個是這次練習的表現）。
+    //    改成兩行分開印、各自標明分母是什麼，誰也不會再被誤讀成對方。
     `課表進度：${s.done} / ${s.total} 題` + (s.done >= s.total ? "（本週完成）" : ""),
+    `　└ 這 ${s.done} 題的首答正確率：${weekAcc.pct === null ? "－" : weekAcc.pct + "%"}`
+      + `（${weekAcc.r}/${weekAcc.n}）　← 老師端看板顯示的就是這個`,
     `這週實際練了：${inWeek.size} 題` + (extra ? `（含訂正時多練的變形題 ${extra} 題）` : ""),
-    `首答正確率：${allStat.pct === null ? "－" : allStat.pct + "%"}`
-      + `（${allStat.r}/${allStat.n}）`,
+    `　└ 其中 ${allStat.n} 題是這週第一次作答，正確率 `
+      + `${allStat.pct === null ? "－" : allStat.pct + "%"}（${allStat.r}/${allStat.n}）`,
     `總作答次數：${ST.log.filter(e => (e.sw ?? e.w) === w).length} 次（含訂正重做）`,
     ``,
-    `各題型（只算第一次作答，共 ${allStat.n} 題）：`,
+    `各題型（只算這週第一次作答的 ${allStat.n} 題）：`,
   ];
   for(const r of rows) L.push(`　${r.label}　${r.r}/${r.n}　${r.pct}%`);
   L.push(``);
@@ -1410,7 +1499,9 @@ async function boot(){
     a.lastReset = new Date().toISOString().slice(0, 16).replace("T", " ");
     a.lostFirst = (a.lostFirst || 0) + n;
     ST = Object.assign(freshState(), {sid: ST.sid, name: ST.name, audit: a});
-    saveState(); sync(); renderHome();
+    INTENDED_WIPE = true;               // 歸零是故意的：備份照存，但不記成「意外遺失」
+    try{ saveState(); } finally { INTENDED_WIPE = false; }
+    sync(); renderHome();
   };
   renderHome(); show("scr-home");
   // 老師給的補救網址（?who=A）優先；否則第一次進來自動問一次。
