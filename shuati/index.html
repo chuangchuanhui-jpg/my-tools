@@ -480,6 +480,116 @@ function paintSync(){
                     on:"已同步到老師端", err:"同步失敗，作答不受影響"}[syncState];
 }
 
+// ── 從老師端補回「手機上沒有的」進度（2026-09-24）───────────────
+// 起因：蔡孟甫手機裡第 1~10 週的進度在 9/12~9/19 之間消失。老師端試算表還留著
+//      每一週的逐題紀錄（seeds 的 first／tries／wrong），但網頁以前只會「送」、
+//      從來不「讀回來」，所以就算老師端有，他的手機也拿不回去。
+//      舊的救法是請學生手動匯出、匯入一個 10 萬字的檔——大人都看不懂怎麼操作。
+// 現在：網頁一打開就自己去老師端抓，把手機上沒有的題補進來。學生什麼都不用按。
+//
+// ⚠️ 只補、不蓋。規則只有一條：手機上已經有的題（ST.q 裡有），一律不動。
+//    手機上的紀錄一定比老師端完整（它有每一次作答，老師端只有摘要），
+//    拿老師端的去蓋手機，等於拿比較差的資料換掉比較好的。
+// ⚠️ 首答不明的題（老師端沒有 first、又有對有錯）只補「做過」，不寫作答紀錄，
+//    不計入正確率——不編造對錯。
+// ⚠️ 作答途中不套用，等回到首頁再補，免得一輪題目做到一半底下的資料被換掉。
+let PENDING_ROWS = null, restoreBusy = false;
+function mergeFromServer(rows){
+  const sid = ST.sid;
+  if(!sid || !Array.isArray(rows)) return {added:0};
+  const latest = {};
+  for(const r of rows){
+    if(r.sid !== sid || !r.key) continue;
+    if(!latest[r.key] || r.ts > latest[r.key].ts) latest[r.key] = r;
+  }
+  // 每一列的 seeds，外加後端 prev 欄保管的「被倒退覆蓋掉的那一份」
+  const sources = [];
+  for(const r of Object.values(latest)){
+    sources.push({week:+r.week, ts:r.ts || 0, seeds:r.seeds || []});
+    if(r.prev && r.prev.seeds){
+      let sd = r.prev.seeds;
+      try{ if(typeof sd === "string") sd = JSON.parse(sd); }catch(e){ sd = []; }
+      sources.push({week:+r.week, ts:r.prev.ts ? new Date(r.prev.ts).getTime() : 0, seeds:sd || []});
+    }
+  }
+  sources.sort((a,b) => a.week - b.week);
+  const before = new Set(Object.keys(ST.q || {}));
+  // 佇列與退場的鍵一律是原題（變形題換回原題），跟 grade() 同一套
+  const origOf = k => { const q = IDX.byK[k]; return !q ? null : (q.tag === "bank" ? k : (q.variant_of || k)); };
+  const best = {}, firstW = {}, reviewK = new Set(), doneK = new Set();
+  for(const src of sources) for(const e of src.seeds){
+    const o = origOf(e.k);
+    if(o && e.review) reviewK.add(o);
+    if(o && e.done && e.k === o) doneK.add(o);
+    if(!(e.tries > 0) || before.has(e.k) || !IDX.byK[e.k]) continue;
+    if(!(e.k in firstW)) firstW[e.k] = src.week;              // 最早出現在哪一週＝當初在練哪一週
+    if(!best[e.k] || src.ts >= best[e.k].ts) best[e.k] = {e, ts:src.ts};   // 對錯次數取最新的
+  }
+  const logs = [];
+  let added = 0, unknown = 0;
+  const keys = Object.keys(best).sort((a,b) => (firstW[a] - firstW[b]) || (a < b ? -1 : 1));
+  for(const k of keys){
+    const e = best[k].e, q = IDX.byK[k];
+    const tries = e.tries | 0, wrong = e.wrong | 0, right = Math.max(0, tries - wrong);
+    // 老師端有 first 就照用；沒有的話，全對＝首答必對、全錯＝首答必錯；有對有錯＝不明
+    const first = (e.first === true || e.first === false) ? e.first
+                : (wrong === 0 ? true : (wrong === tries ? false : null));
+    ST.q[k] = {r:right, w:wrong, last:0, first};
+    added++;
+    if(first === null){ unknown++; }
+    else{
+      const seq = [first];
+      for(let j = 0; j < wrong - (first ? 0 : 1); j++) seq.push(false);
+      for(let j = 0; j < right - (first ? 1 : 0); j++) seq.push(true);
+      for(const ok of seq) logs.push({k, w:q.week, sw:firstW[k], s:q.sub, sk:q.skill||"",
+                                      p:q.point||"", a:"", o:ok?1:0, t:0});
+    }
+    const o = origOf(k);
+    if(!e.done && wrong > 0 && !e.review && o && !before.has(o) && !reviewK.has(o) &&
+       !doneK.has(o) && !ST.queue.some(x => x.k === o))
+      ST.queue.push({k:o, streak:e.streak || 0, miss:1, used:[], added:0});
+  }
+  for(const o of reviewK) if(!before.has(o) && !(ST.review || {})[o]) (ST.review ||= {})[o] = 0;
+  if(!added) return {added:0};
+  // 補回的放最前面：時間上本來就比較早；也不會改掉「最近在練哪一週」（交報告靠最後一筆）
+  ST.log = logs.concat(ST.log || []);
+  ST.answered = (ST.answered || 0) + logs.length;
+  ST.correct = (ST.correct || 0) + logs.filter(x => x.o).length;
+  trimLog();
+  const a = (ST.audit ||= freshAudit());
+  a.restored = (a.restored || 0) + added;
+  a.lastRestore = `${new Date().toISOString().slice(0,16).replace("T"," ")}（從老師端補回 ${added} 題，首答不明 ${unknown}）`;
+  saveState();
+  return {added, unknown};
+}
+function applyPendingRestore(){
+  if(!PENDING_ROWS || SCREEN !== "scr-home") return;
+  const rows = PENDING_ROWS; PENDING_ROWS = null;
+  const r = mergeFromServer(rows);
+  if(r.added){ renderHome(); sync(); toast(`已從老師端補回 ${r.added} 題之前的進度`, true); }
+}
+// force＝剛認完人（最可能是新手機或進度剛不見）；否則一天最多抓一次
+function pullRestore(force){
+  if(!SYNC_URL || !ST.sid || restoreBusy) return;
+  const dayKey = LS_KEY + ":restoreDay:" + ST.sid, today = new Date().toISOString().slice(0,10);
+  let last = null;
+  try{ last = localStorage.getItem(dayKey); }catch(e){}
+  if(!force && last === today) return;
+  restoreBusy = true;
+  const cb = "__r" + Date.now(), s = document.createElement("script");
+  let done = false;
+  const cleanup = () => { restoreBusy = false; try{ delete window[cb]; }catch(e){} try{ s.remove(); }catch(e){} };
+  window[cb] = rows => {
+    done = true; cleanup();
+    try{ localStorage.setItem(dayKey, today); }catch(e){}
+    PENDING_ROWS = rows; applyPendingRestore();
+  };
+  s.onerror = () => { if(!done) cleanup(); };                 // 抓不到就算了，明天再試，不影響作答
+  setTimeout(() => { if(!done) cleanup(); }, 90000);          // 後端常要 8~40 秒
+  s.src = SYNC_URL + (SYNC_URL.includes("?") ? "&" : "?") + "callback=" + cb + "&_=" + Date.now();
+  document.body.appendChild(s);
+}
+
 // ── 狀態 ───────────────────────────────────────────
 // log 是「每一次作答」的原始紀錄，永不覆寫——這是老師端分析與防作弊的依據。
 // q[k].first 是首答對錯，一旦寫入就不再改；重做只會累加 r/w，不會洗掉 first。
@@ -783,7 +893,8 @@ function grade(item, choice){
 // ── 畫面小工具 ─────────────────────────────────────
 const $ = id => document.getElementById(id);
 const SCREENS = ["scr-home","scr-quiz","scr-sum","scr-teach"];
-function show(id){ for(const s of SCREENS) $(s).classList.toggle("hidden", s!==id); window.scrollTo(0,0); }
+let SCREEN = "scr-home";       // 目前在哪個畫面；作答途中不准從老師端補資料進來
+function show(id){ SCREEN = id; for(const s of SCREENS) $(s).classList.toggle("hidden", s!==id); window.scrollTo(0,0); }
 function esc(t){ const d=document.createElement("div"); d.textContent=String(t==null?"":t); return d.innerHTML; }
 const REDUCED = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 const SVG_TICK  = '<svg class="mark" viewBox="0 0 24 24"><path pathLength="1" d="M4.8 12.6l4.7 4.7L19.2 7"/></svg>';
@@ -895,6 +1006,7 @@ function ringSVG(pct){
     <div class="cx"><b>${pct}%</b><span>總進度</span></div>`;
 }
 function renderHome(){
+  if(PENDING_ROWS && SCREEN === "scr-home"){ applyPendingRestore(); return; }
   const totalQ = IDX.bank.length;
   const all = firstStats(ST);
   $("ring").innerHTML = ringSVG(totalQ ? Math.round(100*all.n/totalQ) : 0);
@@ -1018,6 +1130,7 @@ function setWho(sid, how){
     switches: a.switches || 0, lastSwitch: a.lastSwitch || "",
   });
   saveState(); sync(); renderHome();
+  pullRestore(true);            // 剛認人＝最可能是新手機或進度剛不見，馬上去老師端補
   return true;
 }
 
@@ -1508,6 +1621,7 @@ async function boot(){
   const forced = whoFromURL();
   if(forced && setWho(forced, "老師用網址指定")){ /* 已處理 */ }
   else if(SYNC_URL && !ST.sid) askWho();   // 第一次進來先認人，老師端才分得出是誰
+  pullRestore(false);                      // 手機上缺的進度從老師端補回來（一天一次）
 }
 boot().catch(e => { document.body.innerHTML = "<p style='padding:30px'>題庫載入失敗，請重新整理。<br>" + e + "</p>"; });
 </script>
