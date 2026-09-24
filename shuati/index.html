@@ -230,7 +230,7 @@ textarea{width:100%; min-height:74px; border:1px solid var(--line); border-radiu
     <div class="meta" id="curMeta"></div>
     <button class="big" id="btnGo">開始這一週的 10 題</button>
     <button class="big hidden" id="btnReport" style="background:linear-gradient(135deg,#26c88a,var(--ok)); box-shadow:0 6px 16px rgba(15,157,106,.28)">
-      交出第 <span id="repN"></span> 週報告</button>
+      交出週報告</button>
     <div class="note hidden" id="repHint" style="text-align:center">
       按下去會跳出分享，選 LINE 傳給老師就完成了。
       <a class="flag" id="btnRepText">或先看看要傳什麼</a>
@@ -1118,7 +1118,10 @@ function renderHome(){
   $("repHint").classList.toggle("hidden", !repW);
   if(repW){
     const rs = weekStat(ST, repW);
-    $("repN").textContent = repW;
+    // ⚠️ 2026-09-24 拿掉「填 repN 標籤」那一行。repN 是按鈕裡的小標籤，但下一行
+    //    把整個按鈕的文字換掉，repN 就被一起刪了——首頁第一次畫得出來，第二次重畫就在
+    //    這裡丟例外、整個 renderHome 停住（週地圖、錯題按鈕都不更新；「回首頁」也卡住）。
+    //    按鈕文字本來就整段重寫，不需要另外填 repN。
     $("btnReport").textContent = (rs.done >= rs.total ? "✓ 第 " : "傳第 ") + repW +
       (rs.done >= rs.total ? " 週練完了，傳給老師" : ` 週進度給老師（${rs.done}/${rs.total}）`);
     $("btnReport").onclick = () => sendReport(repW);
