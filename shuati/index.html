@@ -531,6 +531,9 @@ function applyClears(){
     }
     ST.log = (ST.log || []).filter(e => !K.has(e.k));
     ST.queue = (ST.queue || []).filter(e => !K.has(e.k));
+    // 課表改版前的舊週次列（例：蔡孟甫誤觸的是「舊」第 19 週，挪週後那 10 題在第 21 週），
+    // 老師端 sid|19 那一列還是舊內容。用新週次重送一次蓋掉，舊的會存進後端 prev 欄。
+    for(const w of (Array.isArray(c.alsoSyncWeeks) ? c.alsoSyncWeeks : [])) if(+w > 0) weeks.add(+w);
     done.push(c.id);
     const a = (ST.audit ||= freshAudit());
     a.cleared = (a.cleared || 0) + n;
@@ -649,6 +652,7 @@ function pullRestore(force){
 // 8/14 改版時被改成 1，這裡改回來。
 function freshState(){
   return {v:3, need:1, mode:"practice", week:1, round:0, sid:"", name:"",
+          layout: (DB && DB.layout) || "",
           q:{}, log:[], days:[], queue:[], mastered:{}, flagged:[], review:{},
           answered:0, correct:0, logTrimmed:0, audit:freshAudit()};
 }
@@ -669,7 +673,30 @@ function freshAudit(){ return {resets:0, imports:0, switches:0, lastReset:"", la
 //
 // 遷移前先把舊資料整包另存到 LS_BAK，萬一出事可以還原。只寫一次，
 // 不覆蓋——第二次以後遷移（理論上不會發生）不能把備份洗成新資料。
+// ── 課表改版：週次往後挪（2026-09-24）──────────────────────────
+// 第 13 週插入第一次複習考原題、第 14 週插入變化題，原第 13～20 週變成 15～22 週。
+// ⚠️ 作答紀錄 log 裡的 w（題目屬於第幾週）與 sw（當時在練第幾週）是「寫入當下」的週次，
+//    weekStat() 靠 e.w 算每週進度。不跟著挪，舊的第 13～20 週紀錄就會算到錯的週
+//    （蔡孟甫補回來的舊題裡就有十幾題在第 13～20 週）。
+// ⚠️ 只挪一次：ST.layout 記著這份紀錄是哪一版課表的週次，對上了就不再動。
+//    新狀態在 freshState() 就蓋上現行版本，所以新學生不會被多挪一次。
+const LAYOUT_SHIFTS = {"複習考1": {from:13, by:2}};
+function migrateLayout(s){
+  const cur = DB && DB.layout;
+  if(!cur || s.layout === cur) return s;
+  const sh = LAYOUT_SHIFTS[cur];
+  if(sh && !s.layout){
+    for(const e of (s.log || [])){
+      if(typeof e.w === "number" && e.w >= sh.from) e.w += sh.by;
+      if(typeof e.sw === "number" && e.sw >= sh.from) e.sw += sh.by;
+    }
+    if(typeof s.week === "number" && s.week >= sh.from) s.week += sh.by;
+  }
+  s.layout = cur;
+  return s;
+}
 function migrate(s){
+  migrateLayout(s);
   if((s.v || 0) >= 3) return s;
   s.need = 1;
   // 在佇列裡＝它本來就是答錯才進來的，視為已錯 1 次，再錯一次就退場。
@@ -692,6 +719,9 @@ function readSlot(key){
     if((s.v || 0) < 3){
       try{ if(!localStorage.getItem(LS_BAK)) localStorage.setItem(LS_BAK, raw); }catch(e){}
     }
+    // ⚠️ 舊紀錄沒有 layout 欄位時要明確設成空字串：freshState() 會帶上現行版本，
+    //    Object.assign 之後就會被誤認成「已經挪過」，舊週次一題都不會挪。
+    if(!("layout" in s)) s.layout = "";
     return migrate(Object.assign(freshState(), s));
   }catch(e){ return null; }
 }
@@ -1074,7 +1104,7 @@ function renderHome(){
   card.style.setProperty("--wc", ccol);
   $("curLab").textContent = `${ci.phase}階段`;
   $("curNo").innerHTML = `第 ${cur} 週 <small>／ 共 ${WEEKS().length} 週</small>`;
-  $("curTtl").textContent = "每週都練九種題型，題目一週比一週難";
+  $("curTtl").textContent = ci.title || "每週都練九種題型，題目一週比一週難";
   $("curBar").style.width = (cs.total ? Math.round(100*cs.done/cs.total) : 0) + "%";
   $("curMeta").innerHTML = `${cs.done} / ${cs.total} 題${cs.pct===null ? "" : `　正確率 ${cs.pct}%`}` +
     (cs.due ? `　<span class="warn">${cs.due} 題待克服</span>` : "");
@@ -1221,8 +1251,12 @@ function paintReveal(item, pick){
     if(L === q.ans){ b.classList.add(ok && L===pick ? "sel-ok" : "reveal"); if(mk) mk.innerHTML = SVG_TICK; }
     if(L === pick && !ok){ b.classList.add("sel-bad"); if(mk) mk.innerHTML = SVG_CROSS; }
   });
+  // ⚠️ 只有 official 才可以寫「官方參考答案」。複習考原卷沒附解答，
+  //    答案是老師自己推的；變化題是自己出的——照實標，不冒充官方。
   const srcNote = q.ansSrc === "ai" ? "AI 雙重解題一致" :
-                  q.ansSrc === "verdict" ? "原卷答案有誤，已更正" : "官方參考答案";
+                  q.ansSrc === "verdict" ? "原卷答案有誤，已更正" :
+                  q.ansSrc === "self" ? "老師推解（原卷未附答案）" :
+                  q.ansSrc === "made" ? "老師自編變化題" : "官方參考答案";
   $("qFeedback").innerHTML =
     `<div class="feedback ${ok ? "ok" : "bad"}"><b>${ok ? "答對了！" : "答錯了，正解是 (" + q.ans + ")"}</b>` +
     (q.expl ? `<div class="expl">${esc(q.expl)}</div>` : "") +
@@ -1511,7 +1545,7 @@ function weekReport(w){
   const weekAcc = firstStats(ST, e => e.w === w);             // 課表上屬於這一週的題（＝首頁與老師端的口徑）
   const L = [
     `【國文刷題・第 ${w} 週報告】`,
-    `難度階段：${info.phase}`,
+    `難度階段：${info.phase}` + (info.title ? `（${info.title}）` : ""),
     `完成日期：${new Date().toISOString().slice(0,10)}`,
     ``,
     // ⚠️ 2026-09-21 改。這裡本來只印一個「首答正確率」，用的是 e.sw（學生在這一週的場次裡
@@ -1594,6 +1628,7 @@ function doImport(){
     const a = Object.assign(freshAudit(), ST.audit || {});
     a.imports = (a.imports || 0) + 1;
     a.lastImport = new Date().toISOString().slice(0, 16).replace("T", " ");
+    if(!("layout" in s)) s.layout = "";      // 同 readSlot()：舊備份沒有版本標記＝舊週次
     ST = migrate(Object.assign(freshState(), s));
     if(keepSid){ ST.sid = keepSid; ST.name = keepName; }
     ST.audit = a;
