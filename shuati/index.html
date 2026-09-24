@@ -407,14 +407,16 @@ let TEACH = null;               // 老師頁正在看的資料（預設是本機
 let SYNC_URL = "";
 let STUDENTS = [["A", "學生一"], ["B", "學生二"]];
 let syncState = "off";
+let CLEARS = [];                // config.json 的 CLEAR：老師指定清空的題（見 applyClears）
 async function loadConfig(){
   try{
     const c = await fetch("config.json", {cache:"no-store"}).then(r => r.json());
     SYNC_URL = (c.SYNC_URL || "").trim();
     if(Array.isArray(c.STUDENTS) && c.STUDENTS.length >= 2) STUDENTS = c.STUDENTS;
+    if(Array.isArray(c.CLEAR)) CLEARS = c.CLEAR;
   }catch(e){ /* 單機模式 */ }
 }
-function sync(){
+function sync(weekOverride){
   if(!SYNC_URL || !ST.sid){ syncState = "off"; paintSync(); return; }
   // ⚠️ 2026-09-21 加。後端是「同一個 sid|week 覆寫同一列」，沒有歷史版本，
   //    所以送一列空白上去＝把老師端那一週的紀錄永久刪掉。
@@ -425,7 +427,7 @@ function sync(){
   if(!(ST.log || []).length && !Object.keys(ST.q || {}).length){
     syncState = "off"; paintSync(); return;
   }
-  const w = ST.week || 1, s = weekStat(ST, w);
+  const w = weekOverride || ST.week || 1, s = weekStat(ST, w);
   // 老師端看板要的是「這一週的每一題怎麼樣」。tries/wrong 直接用累計作答次數，
   // streak 用佇列裡的連對數；已攻克＝不在佇列、且首答有紀錄。
   const inW = (IDX.byWeek[w] || []);
@@ -494,6 +496,53 @@ function paintSync(){
 //    不計入正確率——不編造對錯。
 // ⚠️ 作答途中不套用，等回到首頁再補，免得一輪題目做到一半底下的資料被換掉。
 let PENDING_ROWS = null, restoreBusy = false;
+
+// ── 老師指定清空（2026-09-24）──────────────────────────────
+// 起因：蔡孟甫誤點進第 19 週做了幾題，請老師幫他刪掉、恢復空白。
+// 以前沒有這條路：進度在他手機裡，老師只能請他整份歸零。
+// 做法：config.json 的 CLEAR 列出「哪位學生、哪些題」，網頁打開時從手機刪掉，
+//      並把那幾週重送一次給老師端（後端會把舊的那列存進 prev，不會真的丟）。
+// ⚠️ 用題目代號認，不用週次認：之後課表週次調整，也不會清到別的題。
+// ⚠️ 每筆有 id，套用過就記在 ST.clearsDone，不會每次打開都再清一次
+//    ——否則學生之後正常重做那幾題，下次打開又被清掉。
+// ⚠️ 清掉的題，自動補回一律跳過（見 clearedSet），不然老師端的舊紀錄會把它補回來。
+function clearedSet(){
+  const K = new Set();
+  for(const c of CLEARS) if(c && c.sid === ST.sid && Array.isArray(c.keys)) for(const k of c.keys) K.add(k);
+  return K;
+}
+function applyClears(){
+  if(!ST || !ST.sid) return 0;
+  const done = (ST.clearsDone ||= []);
+  let total = 0;
+  const weeks = new Set();
+  for(const c of CLEARS){
+    if(!c || c.sid !== ST.sid || !c.id || done.includes(c.id) || !Array.isArray(c.keys)) continue;
+    const K = new Set(c.keys);
+    // 那幾題的變形題（訂正時做的）也一起清，不然「沒做過」只清了一半
+    for(const k of Object.keys(ST.q || {})){ const q = IDX.byK[k]; if(q && q.variant_of && K.has(q.variant_of)) K.add(k); }
+    let n = 0;
+    for(const k of K){
+      if(ST.q[k]) n++;
+      delete ST.q[k];
+      if(ST.mastered) delete ST.mastered[k];
+      if(ST.review) delete ST.review[k];
+      const q = IDX.byK[k]; if(q && q.week) weeks.add(q.week);
+    }
+    ST.log = (ST.log || []).filter(e => !K.has(e.k));
+    ST.queue = (ST.queue || []).filter(e => !K.has(e.k));
+    done.push(c.id);
+    const a = (ST.audit ||= freshAudit());
+    a.cleared = (a.cleared || 0) + n;
+    a.lastClear = `${new Date().toISOString().slice(0,16).replace("T"," ")} ${c.id}（手機上清掉 ${n} 題）`;
+    total += n;
+  }
+  if(done.length && weeks.size){
+    saveState();
+    for(const w of weeks) sync(w);        // 老師端那一週也歸零（舊資料留在後端 prev 欄）
+  }
+  return total;
+}
 function mergeFromServer(rows){
   const sid = ST.sid;
   if(!sid || !Array.isArray(rows)) return {added:0};
@@ -514,6 +563,7 @@ function mergeFromServer(rows){
   }
   sources.sort((a,b) => a.week - b.week);
   const before = new Set(Object.keys(ST.q || {}));
+  const cleared = clearedSet();
   // 佇列與退場的鍵一律是原題（變形題換回原題），跟 grade() 同一套
   const origOf = k => { const q = IDX.byK[k]; return !q ? null : (q.tag === "bank" ? k : (q.variant_of || k)); };
   const best = {}, firstW = {}, reviewK = new Set(), doneK = new Set();
@@ -522,6 +572,7 @@ function mergeFromServer(rows){
     if(o && e.review) reviewK.add(o);
     if(o && e.done && e.k === o) doneK.add(o);
     if(!(e.tries > 0) || before.has(e.k) || !IDX.byK[e.k]) continue;
+    if(cleared.has(e.k) || (o && cleared.has(o))) continue;     // 老師指定清空的題不補回
     if(!(e.k in firstW)) firstW[e.k] = src.week;              // 最早出現在哪一週＝當初在練哪一週
     if(!best[e.k] || src.ts >= best[e.k].ts) best[e.k] = {e, ts:src.ts};   // 對錯次數取最新的
   }
@@ -549,7 +600,7 @@ function mergeFromServer(rows){
        !doneK.has(o) && !ST.queue.some(x => x.k === o))
       ST.queue.push({k:o, streak:e.streak || 0, miss:1, used:[], added:0});
   }
-  for(const o of reviewK) if(!before.has(o) && !(ST.review || {})[o]) (ST.review ||= {})[o] = 0;
+  for(const o of reviewK) if(!before.has(o) && !cleared.has(o) && !(ST.review || {})[o]) (ST.review ||= {})[o] = 0;
   if(!added) return {added:0};
   // 補回的放最前面：時間上本來就比較早；也不會改掉「最近在練哪一週」（交報告靠最後一筆）
   ST.log = logs.concat(ST.log || []);
@@ -1129,7 +1180,7 @@ function setWho(sid, how){
   ST.audit = Object.assign(freshAudit(), ST.audit || {}, {
     switches: a.switches || 0, lastSwitch: a.lastSwitch || "",
   });
-  saveState(); sync(); renderHome();
+  saveState(); sync(); applyClears(); renderHome();
   pullRestore(true);            // 剛認人＝最可能是新手機或進度剛不見，馬上去老師端補
   return true;
 }
@@ -1557,6 +1608,7 @@ async function boot(){
   DB = await (await fetch("questions.json", {cache:"no-store"})).json();
   buildIndex();
   ST = loadState();
+  applyClears();                 // 老師指定清空的題，先從手機刪掉
   $("btnGo").onclick = () => startRound(false);
   $("btnDrill").onclick = () => startRound(true);
   $("btnNext").onclick = nextQ;
