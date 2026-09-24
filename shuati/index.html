@@ -247,7 +247,7 @@ textarea{width:100%; min-height:74px; border:1px solid var(--line); border-radiu
   </div>
 
   <div class="card">
-    <h2>20 週地圖</h2>
+    <h2 id="mapTitle">週次地圖</h2>
     <div id="weekMap"></div>
     <div class="note" id="mapNote"></div>
   </div>
@@ -1151,7 +1151,10 @@ function renderHome(){
     b.onclick = () => { ST.week = +b.dataset.w; saveState(); renderHome(); };
   });
   const doneW = WEEKS().filter(w => { const s = weekStat(ST, w); return s.total && s.done >= s.total; }).length;
+  $("mapTitle").textContent = `${WEEKS().length} 週地圖`;     // 週數跟著題庫走，不寫死（課表曾從 20 週改成 22 週）
+  const special = WEEKS().filter(w => WINFO(w).title);
   $("mapNote").innerHTML = `已完成 ${doneW} / ${WEEKS().length} 週。` +
+    (special.length ? `第 ${special.join("、")} 週是第一次複習考（原題與變化題）。` : "") +
     `每週約 ${Math.round(IDX.bank.length / WEEKS().length)} 題（4~5 回，一天一回剛好一週），` +
     `九種題型每週都有，題目一週比一週難。` +
     `點任一週可以直接跳過去練。<em style="color:var(--bad);position:static;display:inline-block;width:8px;height:8px;border:0;vertical-align:middle"></em> 表示那一週有待克服的錯題。`;
