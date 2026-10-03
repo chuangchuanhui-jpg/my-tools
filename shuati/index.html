@@ -389,8 +389,9 @@ const MISS_OUT = 2;
 // （重做多半答對），正確率會憑空變好。改成只砍重做、首答一律保留，見 trimLog()。
 const LOG_MAX = 12000;
 // 顏色照「難度階段」給（入門→挑戰四段），不是照週——20 週用 20 個顏色會變花。
-const PCOLOR = {"入門":"var(--w3)", "基礎":"var(--w1)", "進階":"var(--w4)", "挑戰":"var(--w5)"};
-const PHASE_ORDER = ["入門","基礎","進階","挑戰"];
+const PCOLOR = {"入門":"var(--w3)", "基礎":"var(--w1)", "進階":"var(--w4)", "挑戰":"var(--w5)", "錯題重練":"var(--w2)"};
+// ⚠️ 地圖只畫列在這裡的階段。新增階段（例：2026-10-03 的錯題重練週）忘了加，那幾週就整排不見
+const PHASE_ORDER = ["入門","基礎","進階","挑戰","錯題重練"];
 
 let DB = null, IDX = null, ST = null, RUN = null;
 let TEACH = null;               // 老師頁正在看的資料（預設是本機的 ST）
@@ -616,18 +617,34 @@ function mergeFromServer(rows){
   saveState();
   return {added, unknown};
 }
+// ⚠️ 2026-10-03 改。實際發生過：蔡孟甫 9/27 打開網頁，老師端資料抵達時他已經在作答，
+//    舊版只肯在首頁套用；他刷完一輪就按「再來一輪」、沒回首頁就關掉，資料只放在記憶體裡
+//    沒寫進手機，但網頁已經記成「今天補過了」——前 10 週一直沒補回去（他 9/27 同步上來的
+//    稽核紀錄裡沒有 restored）。現在：
+//      ① 首頁「或」一輪結束的結算畫面都會套用（兩處都沒有題目正在作答，安全）
+//      ② 真的寫進手機才記「今天補過了」；沒寫進去，下次打開會再抓一次
+const RESTORE_OK_SCREENS = ["scr-home", "scr-sum"];
+function restoreDayKey(){ return LS_KEY + ":restoreDay:" + ST.sid; }
 function applyPendingRestore(){
-  if(!PENDING_ROWS || SCREEN !== "scr-home") return;
+  if(!PENDING_ROWS || !RESTORE_OK_SCREENS.includes(SCREEN)) return;
   const rows = PENDING_ROWS; PENDING_ROWS = null;
   const r = mergeFromServer(rows);
+  try{ localStorage.setItem(restoreDayKey(), new Date().toISOString().slice(0,10)); }catch(e){}
   if(r.added){ renderHome(); sync(); toast(`已從老師端補回 ${r.added} 題之前的進度`, true); }
+}
+// 讀不到老師端：記一筆，下次同步時老師端看得到（不然「沒補回」從外面看不出原因）
+function noteRestoreFail(why){
+  const a = (ST.audit ||= freshAudit());
+  a.restoreFail = (a.restoreFail || 0) + 1;
+  a.lastRestoreFail = `${new Date().toISOString().slice(0,16).replace("T"," ")}（${why}）`;
+  saveState();
 }
 // force＝剛認完人（最可能是新手機或進度剛不見）；否則一天最多抓一次
 function pullRestore(force){
   if(!SYNC_URL || !ST.sid || restoreBusy) return;
-  const dayKey = LS_KEY + ":restoreDay:" + ST.sid, today = new Date().toISOString().slice(0,10);
+  const today = new Date().toISOString().slice(0,10);
   let last = null;
-  try{ last = localStorage.getItem(dayKey); }catch(e){}
+  try{ last = localStorage.getItem(restoreDayKey()); }catch(e){}
   if(!force && last === today) return;
   restoreBusy = true;
   const cb = "__r" + Date.now(), s = document.createElement("script");
@@ -635,11 +652,10 @@ function pullRestore(force){
   const cleanup = () => { restoreBusy = false; try{ delete window[cb]; }catch(e){} try{ s.remove(); }catch(e){} };
   window[cb] = rows => {
     done = true; cleanup();
-    try{ localStorage.setItem(dayKey, today); }catch(e){}
-    PENDING_ROWS = rows; applyPendingRestore();
+    PENDING_ROWS = rows; applyPendingRestore();   // 「今天補過了」由 applyPendingRestore 真的寫入後才記
   };
-  s.onerror = () => { if(!done) cleanup(); };                 // 抓不到就算了，明天再試，不影響作答
-  setTimeout(() => { if(!done) cleanup(); }, 90000);          // 後端常要 8~40 秒
+  s.onerror = () => { if(!done){ cleanup(); noteRestoreFail("連不上老師端"); } };   // 不影響作答，下次打開再試
+  setTimeout(() => { if(!done){ done = true; cleanup(); noteRestoreFail("老師端 90 秒沒回應"); } }, 90000);
   s.src = SYNC_URL + (SYNC_URL.includes("?") ? "&" : "?") + "callback=" + cb + "&_=" + Date.now();
   document.body.appendChild(s);
 }
@@ -975,7 +991,10 @@ function grade(item, choice){
 const $ = id => document.getElementById(id);
 const SCREENS = ["scr-home","scr-quiz","scr-sum","scr-teach"];
 let SCREEN = "scr-home";       // 目前在哪個畫面；作答途中不准從老師端補資料進來
-function show(id){ SCREEN = id; for(const s of SCREENS) $(s).classList.toggle("hidden", s!==id); window.scrollTo(0,0); }
+function show(id){
+  SCREEN = id; for(const s of SCREENS) $(s).classList.toggle("hidden", s!==id); window.scrollTo(0,0);
+  if(PENDING_ROWS && RESTORE_OK_SCREENS.includes(id)) setTimeout(applyPendingRestore, 0);   // 等著的補回資料，到安全的畫面就套用
+}
 function esc(t){ const d=document.createElement("div"); d.textContent=String(t==null?"":t); return d.innerHTML; }
 const REDUCED = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 const SVG_TICK  = '<svg class="mark" viewBox="0 0 24 24"><path pathLength="1" d="M4.8 12.6l4.7 4.7L19.2 7"/></svg>';
@@ -1086,8 +1105,15 @@ function ringSVG(pct){
       style="transition:stroke-dashoffset .8s cubic-bezier(.2,.9,.3,1)"/></svg>
     <div class="cx"><b>${pct}%</b><span>總進度</span></div>`;
 }
+// 地圖下方說明特殊週；哪一類沒有就不寫（不能出現「第 undefined 週」）
+function specialNote(special){
+  const exam = special.filter(w => WINFO(w).phase !== "錯題重練");
+  const redo = special.filter(w => WINFO(w).phase === "錯題重練");
+  return (exam.length ? `第 ${exam.join("、")} 週是第一次複習考（原題與變化題）。` : "") +
+         (redo.length ? `第 ${redo[0]}～${redo[redo.length-1]} 週是錯題重練（前面錯過的題再做一次）。` : "");
+}
 function renderHome(){
-  if(PENDING_ROWS && SCREEN === "scr-home"){ applyPendingRestore(); return; }
+  if(PENDING_ROWS && RESTORE_OK_SCREENS.includes(SCREEN)){ applyPendingRestore(); return; }
   const totalQ = IDX.bank.length;
   const all = firstStats(ST);
   $("ring").innerHTML = ringSVG(totalQ ? Math.round(100*all.n/totalQ) : 0);
@@ -1154,7 +1180,7 @@ function renderHome(){
   $("mapTitle").textContent = `${WEEKS().length} 週地圖`;     // 週數跟著題庫走，不寫死（課表曾從 20 週改成 22 週）
   const special = WEEKS().filter(w => WINFO(w).title);
   $("mapNote").innerHTML = `已完成 ${doneW} / ${WEEKS().length} 週。` +
-    (special.length ? `第 ${special.join("、")} 週是第一次複習考（原題與變化題）。` : "") +
+    specialNote(special) +
     `每週約 ${Math.round(IDX.bank.length / WEEKS().length)} 題（4~5 回，一天一回剛好一週），` +
     `九種題型每週都有，題目一週比一週難。` +
     `點任一週可以直接跳過去練。<em style="color:var(--bad);position:static;display:inline-block;width:8px;height:8px;border:0;vertical-align:middle"></em> 表示那一週有待克服的錯題。`;
