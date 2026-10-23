@@ -905,8 +905,13 @@ function shuffledClone(q){
   const opts = idx.map(i => q.opts[i]);
   const ansOld = "ABCD".indexOf(q.ans);
   const ans = "ABCD"[idx.indexOf(ansOld)];
+  // 解析裡寫到選項字母（「故選B」「(C)錯在…」）要跟著換，不然畫面會同時出現「正解 A」與「故選B」
+  // （2026-10-23 Codex 審查抓到，fcb1315df94a097a）。判斷規則與匯入端 keep_order() 相同；
+  // 不用 lookbehind：iOS 16.4 以前的 Safari 不支援，整支程式會解析失敗。
+  const expl = (q.expl || "").replace(/(^|[^A-Za-z])([（(]?)([ABCD])([)）]?)(?=[^A-Za-z]|$)/g,
+    (m, pre, l, L, r) => pre + l + "ABCD"[idx.indexOf("ABCD".indexOf(L))] + r);
   // k 保持原題的 k：作答紀錄、佇列、老師端統計都靠 k 對齊，換了就變成另一題。
-  return Object.assign({}, q, {opts, ans, reshuffled:true});
+  return Object.assign({}, q, {opts, ans, expl, reshuffled:true});
 }
 function pickForEntry(e){
   const orig = IDX.byK[e.k];
