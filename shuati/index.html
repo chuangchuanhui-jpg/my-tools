@@ -422,12 +422,14 @@ let syncState = "off";
 let SYNC_INFLIGHT_BYTES = 0;                 // 進行中的 keepalive 同步共佔多少位元組（見 syncNow）
 const SYNC_KEEPALIVE_BUDGET = 60 * 1024;     // Chromium 的 keepalive 總額度是 64 KiB，留一點給標頭
 let CLEARS = [];                // config.json 的 CLEAR：老師指定清空的題（見 applyClears）
+let ASSIGN = null;              // config.json 的 ASSIGN：老師指定本週要做的週次（見 applyAssign）
 async function loadConfig(){
   try{
     const c = await fetch("config.json", {cache:"no-store"}).then(r => r.json());
     SYNC_URL = (c.SYNC_URL || "").trim();
     if(Array.isArray(c.STUDENTS) && c.STUDENTS.length >= 2) STUDENTS = c.STUDENTS;
     if(Array.isArray(c.CLEAR)) CLEARS = c.CLEAR;
+    if(c.ASSIGN && +c.ASSIGN.week > 0) ASSIGN = c.ASSIGN;
   }catch(e){ /* 單機模式 */ }
 }
 // ⚠️ 2026-11-07：sync() 不准丟例外。它在 grade() 的尾端被呼叫，一旦丟出去，
@@ -617,6 +619,31 @@ function applyClears(){
     for(const w of weeks) sync(w);        // 老師端那一週也歸零（舊資料留在後端 prev 欄）
   }
   return total;
+}
+// ── 老師指定本週（2026-11-07）──────────────────────────────
+// 起因：11/07 蔡孟甫打開網頁停在第 19 週（他上次練的週），第 23 週那排在畫面外要往下捲；
+//      老師要的是「這週兩個人打開就是第 23 週」。首頁的主角週＝ST.week（學生最後點的週），
+//      老師以前無從指定。現在 config.json 的 ASSIGN.week 每次打開都把 ST.week 設成指定週；
+//      學生這次打開後仍可點地圖去別週，下次打開又回到指定週。要換週只改 config.json。
+function assignTarget(){
+  if(!ASSIGN || !ST || !DB) return 0;
+  const w = +ASSIGN.week;
+  if(!(w > 0) || !(DB.weeks[w] || DB.weeks[String(w)])) return 0;
+  // 指定週做完了就自動往下一週（老師 11/07：「第 23 跟 24 週」）；全做完就停在指定週
+  const next = WEEKS().filter(x => x >= w).find(x => { const st = weekStat(ST, x); return st.total && st.done < st.total; });
+  return next || w;
+}
+function applyAssign(){
+  const w = assignTarget();
+  if(!w || ST.week === w) return false;
+  ST.week = w; saveState();
+  return true;
+}
+// 答題回饋的出處字樣：錯題重練週的題不寫「原第 N 週；某某錯過」——老師 11/07：
+// 「他們不知道他們答過，每一題都要空心的，像 23 週之前那樣作答」。
+function srcLabel(q){
+  if(q && WINFO(q.week).phase === "錯題重練") return "題庫";
+  return (q && q.src) || "題庫";
 }
 function mergeFromServer(rows){
   const sid = ST.sid;
@@ -994,7 +1021,13 @@ function pickForEntry(e){
 }
 function composeRound(week, drillOnly){
   const items = [], usedK = new Set();
-  for(const e of ST.queue.slice(0, drillOnly ? ROUND_N : MAX_REDO_PER_ROUND)){
+  // 錯題重練週（2026-11-07）：回合只出本週的題。以前會先塞最多 5 題別週的「上次錯的題再挑戰」，
+  // 學生在第 23 週按開始先看到第 1、2 週的舊題，以為系統給錯。本週自己答錯的題仍會再挑戰；
+  // 別週的待克服錯題留給首頁的「錯題」按鈕與之後的重練輪次。
+  const redoWeek = !drillOnly && week && WINFO(week).phase === "錯題重練";
+  const inWeekK = redoWeek ? new Set((IDX.byWeek[week] || []).map(q => q.k)) : null;
+  const queue = inWeekK ? ST.queue.filter(e => inWeekK.has(e.k)) : ST.queue;
+  for(const e of queue.slice(0, drillOnly ? ROUND_N : MAX_REDO_PER_ROUND)){
     const q = pickForEntry(e);
     if(q && !usedK.has(q.k)){ items.push({q, entryK:e.k}); usedK.add(q.k); }
   }
@@ -1374,7 +1407,7 @@ function paintReveal(item, pick){
   $("qFeedback").innerHTML =
     `<div class="feedback ${ok ? "ok" : "bad"}"><b>${ok ? "答對了！" : "答錯了，正解是 (" + q.ans + ")"}</b>` +
     (q.expl ? `<div class="expl">${esc(q.expl)}</div>` : "") +
-    `<div class="meta">${srcNote} · ${esc(q.src||"題庫")}</div></div>`;
+    `<div class="meta">${srcNote} · ${esc(srcLabel(q))}</div></div>`;
 }
 function renderQ(){
   const item = RUN.items[RUN.i], q = item.q;
@@ -1763,6 +1796,7 @@ async function boot(){
   buildIndex();
   ST = loadState();
   applyClears();                 // 老師指定清空的題，先從手機刪掉
+  applyAssign();                 // 老師指定本週：打開就停在那一週
   // 2026-11-07：全部包 safe()，丟例外會顯示在畫面上並記進 audit，不再「按了沒反應」
   $("btnGo").onclick = safe("開始", () => startRound(false));
   $("btnDrill").onclick = safe("錯題", () => startRound(true));
