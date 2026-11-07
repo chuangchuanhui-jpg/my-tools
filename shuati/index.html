@@ -183,6 +183,13 @@ textarea{width:100%; min-height:74px; border:1px solid var(--line); border-radiu
   white-space:nowrap; box-shadow:0 8px 26px rgba(0,0,0,.26); animation:toastIn 1.3s ease-out forwards}
 #toast.gold{background:linear-gradient(135deg,#26c88a,var(--ok))}
 #confetti{position:fixed; inset:0; z-index:55; pointer-events:none}
+/* 出錯提示（2026-11-07）：任何例外都要讓學生看得到、截得到圖 */
+#errBox{position:fixed; left:12px; right:12px; bottom:14px; z-index:70; background:var(--card);
+  border:2px solid var(--bad); border-radius:14px; padding:13px 15px; box-shadow:var(--shadow); font-size:15px}
+#errBox .em{color:var(--bad); font-size:13.5px; margin-top:5px; word-break:break-all}
+#errBox .eb{display:flex; gap:8px; margin-top:10px}
+#errBox button{font-size:15px; padding:9px 14px; border-radius:10px; border:0; background:var(--accent); color:var(--accent-ink); font-weight:700}
+#errBox button.ghost{background:var(--chip); color:var(--ink)}
 @media (prefers-reduced-motion: reduce){
   *,*::before,*::after{animation-duration:.01ms !important;
     animation-iteration-count:1 !important; transition-duration:.01ms !important}
@@ -280,6 +287,10 @@ textarea{width:100%; min-height:74px; border:1px solid var(--line); border-radiu
     <div class="note" id="flaggedNote"></div>
   </div>
 </div>
+
+<!-- 出錯提示（2026-11-07）：平常隱藏，reportError() 才打開 -->
+<div id="errBox" class="hidden"><b>出錯了，請截這張圖給老師</b><div class="em" id="errMsg"></div>
+  <div class="eb"><button id="errReload">重新整理再試一次</button><button id="errClose" class="ghost">關閉</button></div></div>
 
 <!-- ═══ 作答 ═══ -->
 <div id="scr-quiz" class="hidden">
@@ -408,6 +419,8 @@ let TEACH = null;               // 老師頁正在看的資料（預設是本機
 let SYNC_URL = "";
 let STUDENTS = [["A", "學生一"], ["B", "學生二"]];
 let syncState = "off";
+let SYNC_INFLIGHT_BYTES = 0;                 // 進行中的 keepalive 同步共佔多少位元組（見 syncNow）
+const SYNC_KEEPALIVE_BUDGET = 60 * 1024;     // Chromium 的 keepalive 總額度是 64 KiB，留一點給標頭
 let CLEARS = [];                // config.json 的 CLEAR：老師指定清空的題（見 applyClears）
 async function loadConfig(){
   try{
@@ -417,7 +430,13 @@ async function loadConfig(){
     if(Array.isArray(c.CLEAR)) CLEARS = c.CLEAR;
   }catch(e){ /* 單機模式 */ }
 }
+// ⚠️ 2026-11-07：sync() 不准丟例外。它在 grade() 的尾端被呼叫，一旦丟出去，
+//    answer() 就畫不出對錯、「下一題」也不會亮——學生看到的是「按了沒反應」。
 function sync(weekOverride){
+  try{ syncNow(weekOverride); }
+  catch(e){ syncState = "err"; paintSync(); noteSoftError("同步", e); }
+}
+function syncNow(weekOverride){
   if(!SYNC_URL || !ST.sid){ syncState = "off"; paintSync(); return; }
   // ⚠️ 2026-09-21 加。後端是「同一個 sid|week 覆寫同一列」，沒有歷史版本，
   //    所以送一列空白上去＝把老師端那一週的紀錄永久刪掉。
@@ -471,16 +490,68 @@ function sync(weekOverride){
   });
   // text/plain 才不會觸發 CORS 預檢（Apps Script 不處理 OPTIONS）；
   // no-cors ＋ fire-and-forget：送不出去也不能擋學生作答。
-  fetch(SYNC_URL, {method:"POST", mode:"no-cors", keepalive:true,
+  // ⚠️ 2026-11-07：keepalive 請求「進行中的全部加起來」不能超過 64 KiB（Chromium 額度），
+  //    超過的那一筆會直接 rejected、根本沒送出去。錯題重練週一筆快照約 28 KB，第 3 筆起
+  //    就被丟：模擬考交卷一次灌 10 筆，老師端只收到前 2 筆（本機實測連送 6 筆只到 2 筆）。
+  //    現在：額度內用 keepalive（關掉網頁也送得完），額度外改用一般請求（不會被丟，
+  //    只有送到一半關掉網頁才會中斷）。
+  const bytes = (typeof TextEncoder !== "undefined") ? new TextEncoder().encode(body).length : body.length * 3;
+  const keep = SYNC_INFLIGHT_BYTES + bytes <= SYNC_KEEPALIVE_BUDGET;
+  if(keep) SYNC_INFLIGHT_BYTES += bytes;
+  let released = false;
+  const release = () => { if(keep && !released){ released = true; SYNC_INFLIGHT_BYTES = Math.max(0, SYNC_INFLIGHT_BYTES - bytes); } };
+  fetch(SYNC_URL, {method:"POST", mode:"no-cors", keepalive:keep,
                    headers:{"Content-Type":"text/plain;charset=utf-8"}, body})
     .then(() => { syncState = "on"; paintSync(); })
-    .catch(() => { syncState = "err"; paintSync(); });
+    .catch(() => { syncState = "err"; paintSync(); })
+    .then(release);
+  setTimeout(release, 30000);                // 保險：回應永遠不來也要把額度還回去
 }
 function paintSync(){
   const el = document.getElementById("syncNote");
   if(!el) return;
   el.textContent = {off:"單機模式（老師端看不到即時進度）",
                     on:"已同步到老師端", err:"同步失敗，作答不受影響"}[syncState];
+}
+
+// ── 出錯不准靜悄悄（2026-11-07）────────────────────────────────
+// 起因：蔡孟成 11/07 回報第 23 週「無法作答」。老師端只收到 08:57 的開機同步，之後
+//      一筆作答都沒有；本機用他老師端的資料重現，開始、作答、結算全部正常。
+//      舊版任何例外只進 console：學生看到的是「按了沒反應」，老師什麼線索都拿不到。
+//      現在：例外會在畫面上顯示（請學生截圖），也記進 audit 同步給老師端看板。
+let ERR_BUSY = false;
+function noteSoftError(where, err){
+  try{
+    if(!ST) return;
+    const a = (ST.audit ||= freshAudit());
+    a.errors = (a.errors || 0) + 1;
+    const msg = String((err && (err.stack || err.message)) || err || "?").split("\n").slice(0, 2).join(" ").slice(0, 300);
+    a.lastError = `${new Date().toISOString().slice(0,16).replace("T"," ")} ${where}：${msg}`;
+    saveState();
+  }catch(e){}
+}
+function reportError(where, err){
+  noteSoftError(where, err);
+  if(ERR_BUSY) return;
+  ERR_BUSY = true;
+  try{
+    const box = $("errBox");
+    const msg = String((err && err.message) || err || "不明錯誤").slice(0, 200);
+    $("errMsg").textContent = `${where}：${msg}`;
+    box.classList.remove("hidden");
+    $("errReload").onclick = () => { try{ location.reload(); }catch(e){} };
+    $("errClose").onclick = () => { box.classList.add("hidden"); };
+    try{ sync(); }catch(e){}
+  }catch(e){}
+  ERR_BUSY = false;
+}
+// 按鈕／點選的處理函式都包一層：丟例外就顯示並記錄，不讓「按了沒反應」再發生
+function safe(where, fn){
+  return function(){ try{ return fn.apply(this, arguments); }catch(e){ reportError(where, e); } };
+}
+if(typeof window !== "undefined" && typeof window.addEventListener === "function"){
+  window.addEventListener("error", e => reportError("頁面", (e && (e.error || e.message)) || e));
+  window.addEventListener("unhandledrejection", e => noteSoftError("promise", e && e.reason));
 }
 
 // ── 從老師端補回「手機上沒有的」進度（2026-09-24）───────────────
@@ -631,6 +702,7 @@ function applyPendingRestore(){
   const r = mergeFromServer(rows);
   try{ localStorage.setItem(restoreDayKey(), new Date().toISOString().slice(0,10)); }catch(e){}
   if(r.added){ renderHome(); sync(); toast(`已從老師端補回 ${r.added} 題之前的進度`, true); }
+  return r;
 }
 // 讀不到老師端：記一筆，下次同步時老師端看得到（不然「沒補回」從外面看不出原因）
 function noteRestoreFail(why){
@@ -1118,7 +1190,12 @@ function specialNote(special){
          (redo.length ? `第 ${redo[0]}～${redo[redo.length-1]} 週是錯題重練（前面錯過的題再做一次）。` : "");
 }
 function renderHome(){
-  if(PENDING_ROWS && RESTORE_OK_SCREENS.includes(SCREEN)){ applyPendingRestore(); return; }
+  if(PENDING_ROWS && RESTORE_OK_SCREENS.includes(SCREEN)){
+    // 補到東西時 applyPendingRestore 自己會重畫一次首頁；一題都沒補就繼續往下畫。
+    // ⚠️ 2026-11-07 前這裡不分情況直接 return：補回 0 題時首頁就停在上一次的畫面。
+    const r = applyPendingRestore();
+    if(r && r.added) return;
+  }
   const totalQ = IDX.bank.length;
   const all = firstStats(ST);
   $("ring").innerHTML = ringSVG(totalQ ? Math.round(100*all.n/totalQ) : 0);
@@ -1179,7 +1256,7 @@ function renderHome(){
     map.appendChild(row);
   }
   map.querySelectorAll(".wtile").forEach(b => {
-    b.onclick = () => { ST.week = +b.dataset.w; saveState(); renderHome(); };
+    b.onclick = safe("選週", () => { ST.week = +b.dataset.w; saveState(); renderHome(); });
   });
   const doneW = WEEKS().filter(w => { const s = weekStat(ST, w); return s.total && s.done >= s.total; }).length;
   $("mapTitle").textContent = `${WEEKS().length} 週地圖`;     // 週數跟著題庫走，不寫死（課表曾從 20 週改成 22 週）
@@ -1304,10 +1381,13 @@ function renderQ(){
   const exam = RUN.mode === "exam" && !RUN.reviewing;
   $("qPos").textContent = `${RUN.reviewing ? "檢討 " : ""}第 ${RUN.i+1} / ${RUN.items.length} 題`;
   const need = ST.need, e0 = item.entryK ? ST.queue.find(x => x.k === item.entryK) : null;
-  $("qRetag").innerHTML = item.entryK
+  $("qRetag").innerHTML = (item.entryK
     ? `<span class="retag">上次錯的題，再挑戰${q.reshuffled ? "（同一題，選項順序換了）" : "（換了一批選項）"}`
       + `　已連對 ${(e0 && e0.streak) || 0}/${need}</span>`
-    : (item.review ? `<span class="retag" style="background:var(--chip);color:var(--sub)">複習題</span>` : "");
+    : (item.review ? `<span class="retag" style="background:var(--chip);color:var(--sub)">複習題</span>` : "")) +
+    // 模擬考模式點選項不會馬上顯示對錯，沒說清楚會被當成「壞了」（2026-11-07）
+    (exam ? `<div class="note" style="margin-bottom:8px">模擬考模式：點選項只是先記下，${RUN.items.length} 題都答完按「交卷」才顯示對錯。` +
+            `想馬上看對錯，回首頁把「作答模式」改成「練習」。</div>` : "");
   $("qPassage").innerHTML = q.pg ? `<div class="passage">${esc(DB.passages[q.pg]||"")}</div>` : "";
   $("qStem").textContent = q.stem;
   const box = $("qOpts"); box.innerHTML = "";
@@ -1315,7 +1395,7 @@ function renderQ(){
     const b = document.createElement("button");
     b.className = "opt";
     b.innerHTML = `<span class="ltr">${L}</span><span class="otxt">${esc(q.opts[i])}</span><span class="mk"></span>`;
-    b.onclick = () => answer(item, L, b);
+    b.onclick = safe("作答", () => answer(item, L, b));
     box.appendChild(b);
   });
   $("qFeedback").innerHTML = "";
@@ -1350,6 +1430,7 @@ function answer(item, L, btn){
     document.querySelectorAll("#qOpts .opt").forEach(b => b.classList.remove("picked"));
     btn.classList.add("picked");
     renderQDots();
+    $("qFeedback").innerHTML = `<div class="note">已選 (${L})。模擬考模式要 ${RUN.items.length} 題都答完、按「交卷」才會顯示對錯。</div>`;
     return;
   }
   if(RUN.results[RUN.i] !== undefined) return;
@@ -1682,20 +1763,21 @@ async function boot(){
   buildIndex();
   ST = loadState();
   applyClears();                 // 老師指定清空的題，先從手機刪掉
-  $("btnGo").onclick = () => startRound(false);
-  $("btnDrill").onclick = () => startRound(true);
-  $("btnNext").onclick = nextQ;
-  $("btnPrev").onclick = prevQ;
-  $("btnReview").onclick = () => { RUN.reviewing = true; RUN.i = 0; show("scr-quiz"); renderQ(); };
-  $("btnAgain").onclick = () => startRound(RUN && RUN.drill);
-  $("btnHome").onclick = () => { renderHome(); show("scr-home"); };
+  // 2026-11-07：全部包 safe()，丟例外會顯示在畫面上並記進 audit，不再「按了沒反應」
+  $("btnGo").onclick = safe("開始", () => startRound(false));
+  $("btnDrill").onclick = safe("錯題", () => startRound(true));
+  $("btnNext").onclick = safe("下一題", nextQ);
+  $("btnPrev").onclick = safe("上一題", prevQ);
+  $("btnReview").onclick = safe("檢討", () => { RUN.reviewing = true; RUN.i = 0; show("scr-quiz"); renderQ(); });
+  $("btnAgain").onclick = safe("再來一輪", () => startRound(RUN && RUN.drill));
+  $("btnHome").onclick = safe("回首頁", () => { renderHome(); show("scr-home"); });
   $("btnQuit").onclick = () => {
     if(confirm("要中斷這一輪嗎？已經作答的都留了紀錄，不會白做。")){
       stopTimer(); renderHome(); show("scr-home");
     }
   };
   $("btnTeach").onclick = () => renderTeach(ST);
-  $("btnTeachHome").onclick = () => { renderHome(); show("scr-home"); };
+  $("btnTeachHome").onclick = safe("回首頁", () => { renderHome(); show("scr-home"); });
   $("btnLoadOther").onclick = () => { $("teachBox").classList.toggle("hidden"); };
   $("btnDoLoad").onclick = () => {
     const raw = $("teachTa").value.trim();
