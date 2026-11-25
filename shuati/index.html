@@ -3,9 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
 <title>國文刷題</title>
 <style>
 :root{
+  /* 2026-11-25 MWG dark-mode：讓表單元件、捲軸、初次載入底色也跟著深色 */
+  color-scheme:light dark;
   --bg1:#eef3fb; --bg2:#f7f0fb; --card:#ffffff; --ink:#151c26; --sub:#5d6b7e;
   --line:#e6ebf2; --accent:#3d7dfb; --accent-ink:#fff;
   --ok:#0f9d6a; --ok-bg:#e2f7ee; --bad:#e0453f; --bad-bg:#fdecea;
@@ -27,7 +30,7 @@
 body{margin:0; color:var(--ink); font-size:17px; line-height:1.6;
   font-family:"PingFang TC","Noto Sans TC","Microsoft JhengHei",sans-serif;
   background:linear-gradient(168deg,var(--bg1) 0%,var(--bg2) 68%,var(--bg1) 100%);
-  background-attachment:fixed; min-height:100vh}
+  background-attachment:fixed; min-height:100vh; min-height:100dvh}
 .wrap{max-width:660px; margin:0 auto; padding:12px 14px 44px}
 header{display:flex; align-items:center; justify-content:space-between; padding:10px 2px 14px}
 header h1{font-size:21px; margin:0; letter-spacing:.06em; font-weight:800}
@@ -79,7 +82,7 @@ button.ghost:active{background:var(--chip)}
 .stagerow .sh span{font-size:12px; color:var(--sub); min-width:0;
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
 .wgrid{display:flex; gap:6px; flex-wrap:wrap}
-.wtile{position:relative; width:42px; height:42px; border-radius:11px; border:1.8px solid var(--line);
+.wtile{position:relative; width:44px; height:44px; border-radius:11px; border:1.8px solid var(--line);
   background:var(--card); color:var(--sub); font-weight:800; font-size:14px; cursor:pointer;
   display:flex; align-items:center; justify-content:center; overflow:hidden; padding:0}
 .wtile i{position:absolute; left:0; bottom:0; width:100%; background:var(--wc);
@@ -124,7 +127,10 @@ button.ghost:active{background:var(--chip)}
 .feedback .expl{color:var(--ink); margin-top:7px; font-size:15px; line-height:1.65}
 .feedback .meta{color:var(--sub); font-size:12px; margin-top:7px}
 .rowbtns{display:flex; gap:10px; align-items:center; justify-content:space-between}
-a.flag{color:var(--sub); font-size:13px; text-decoration:underline; cursor:pointer}
+/* 2026-11-25 MWG form-factor-adaptation：觸控目標至少 44×44 */
+a.flag{color:var(--sub); font-size:13px; text-decoration:underline; cursor:pointer;
+  display:inline-flex; align-items:center; min-height:44px; padding-right:8px}
+label:has(input[type="radio"]){display:inline-flex; align-items:center; gap:4px; min-height:44px}
 #qTimer{font-variant-numeric:tabular-nums; font-weight:700; color:var(--ink)}
 
 /* ── 結算 ── */
@@ -184,12 +190,24 @@ textarea{width:100%; min-height:74px; border:1px solid var(--line); border-radiu
 #toast.gold{background:linear-gradient(135deg,#26c88a,var(--ok))}
 #confetti{position:fixed; inset:0; z-index:55; pointer-events:none}
 /* 出錯提示（2026-11-07）：任何例外都要讓學生看得到、截得到圖 */
-#errBox{position:fixed; left:12px; right:12px; bottom:14px; z-index:70; background:var(--card);
+#errBox{position:fixed; left:12px; right:12px; bottom:max(14px, calc(env(safe-area-inset-bottom, 0px) + 8px)); z-index:70; background:var(--card);
   border:2px solid var(--bad); border-radius:14px; padding:13px 15px; box-shadow:var(--shadow); font-size:15px}
 #errBox .em{color:var(--bad); font-size:13.5px; margin-top:5px; word-break:break-all}
 #errBox .eb{display:flex; gap:8px; margin-top:10px}
 #errBox button{font-size:15px; padding:9px 14px; border-radius:10px; border:0; background:var(--accent); color:var(--accent-ink); font-weight:700}
 #errBox button.ghost{background:var(--chip); color:var(--ink)}
+/* 網頁內建對話框（2026-11-25 MWG dialog）：取代瀏覽器的 alert/confirm/prompt */
+#uiDlg{border:0; border-radius:18px; padding:20px 18px 16px; width:min(92vw,400px);
+  background:var(--card); color:var(--ink); box-shadow:var(--shadow)}
+#uiDlg::backdrop{background:rgba(10,16,28,.45)}
+#uiDlg .dm{white-space:pre-line; font-size:16px; line-height:1.6; margin:0 0 14px}
+#uiDlg .dl{display:flex; flex-direction:column; gap:8px; margin-bottom:12px}
+#uiDlg .dl button{min-height:48px; border-radius:12px; border:1.5px solid var(--line);
+  background:var(--chip); color:var(--ink); font-size:17px; font-weight:700; cursor:pointer}
+#uiDlg .db{display:flex; gap:8px; justify-content:flex-end}
+#uiDlg .db button{min-height:44px; padding:0 18px; border-radius:11px; border:0; cursor:pointer;
+  background:var(--accent); color:var(--accent-ink); font-size:15.5px; font-weight:700}
+#uiDlg .db button.ghost{background:var(--chip); color:var(--ink)}
 @media (prefers-reduced-motion: reduce){
   *,*::before,*::after{animation-duration:.01ms !important;
     animation-iteration-count:1 !important; transition-duration:.01ms !important}
@@ -292,6 +310,13 @@ textarea{width:100%; min-height:74px; border:1px solid var(--line); border-radiu
 <div id="errBox" class="hidden"><b>出錯了，請截這張圖給老師</b><div class="em" id="errMsg"></div>
   <div class="eb"><button id="errReload">重新整理再試一次</button><button id="errClose" class="ghost">關閉</button></div></div>
 
+<!-- 網頁內建對話框（2026-11-25）：uiAlert／uiConfirm／askWho 共用 -->
+<dialog id="uiDlg"><form method="dialog">
+  <p class="dm" id="dlgMsg"></p>
+  <div class="dl hidden" id="dlgList"></div>
+  <div class="db"><button value="cancel" id="dlgCancel" class="ghost">取消</button><button value="ok" id="dlgOk">好</button></div>
+</form></dialog>
+
 <!-- ═══ 作答 ═══ -->
 <div id="scr-quiz" class="hidden">
   <div class="card">
@@ -302,7 +327,7 @@ textarea{width:100%; min-height:74px; border:1px solid var(--line); border-radiu
     <div id="qOpts"></div>
     <div id="qFeedback"></div>
     <div class="rowbtns">
-      <a class="flag" id="qFlag">這題怪怪的？回報</a>
+      <a class="flag" id="qFlag" role="button" tabindex="0">這題怪怪的？回報</a>
       <span style="display:flex; gap:8px; align-items:center">
         <button class="ghost hidden" id="btnPrev">◀ 上一題</button>
         <button class="big" id="btnNext" style="width:auto; margin-top:0; padding:11px 26px" disabled>下一題</button>
@@ -550,6 +575,67 @@ function reportError(where, err){
 // 按鈕／點選的處理函式都包一層：丟例外就顯示並記錄，不讓「按了沒反應」再發生
 function safe(where, fn){
   return function(){ try{ return fn.apply(this, arguments); }catch(e){ reportError(where, e); } };
+}
+
+// ── 網頁內建對話框（2026-11-25，依 Modern Web Guidance「dialog」）──
+// 支援 <dialog> 的瀏覽器用網頁自己的樣式；不支援（舊手機、測試環境）就退回
+// 瀏覽器原本的 alert/confirm/prompt，流程與改版前完全相同（測試走的就是這條）。
+// 借程序不借證據：指南只規定寫法，沒有宣稱成效。
+const DLG_OK = (() => {
+  try{ return typeof HTMLDialogElement === "function"
+           && typeof document.createElement("dialog").showModal === "function"; }
+  catch(e){ return false; }
+})();
+const DLG_Q = [];                       // 同時要跳兩個時排隊，一次只開一個
+function dlgOpen(job){
+  const d = $("uiDlg");
+  if(d.open){ DLG_Q.push(job); return; }
+  $("dlgMsg").textContent = job.msg;
+  const list = $("dlgList"); list.innerHTML = "";
+  (job.choices || []).forEach((c, i) => {
+    const b = document.createElement("button");
+    b.type = "submit"; b.value = "c" + i; b.textContent = c;
+    list.appendChild(b);
+  });
+  list.classList.toggle("hidden", !(job.choices && job.choices.length));
+  $("dlgOk").classList.toggle("hidden", !job.ok);
+  $("dlgCancel").classList.toggle("hidden", !job.cancel);
+  $("dlgOk").textContent = job.ok || "好";
+  $("dlgCancel").textContent = job.cancel || "取消";
+  d.returnValue = "";
+  d.onclose = () => {
+    const v = d.returnValue; d.returnValue = ""; d.onclose = null;   // Esc／返回手勢＝""＝沒選
+    try{ job.done(v); }catch(e){ reportError("對話框", e); }
+    const next = DLG_Q.shift(); if(next) dlgOpen(next);
+  };
+  d.showModal();
+  // 危險操作預設停在「取消」；有名單時停在第一個名字；其他停在主按鈕
+  const f = job.focus === "cancel" ? $("dlgCancel")
+          : (job.choices && job.choices.length) ? list.firstChild : $("dlgOk");
+  try{ f.focus(); }catch(e){}
+}
+function uiAlert(msg){
+  if(!DLG_OK){ alert(msg); return; }
+  dlgOpen({msg, ok:"好", done(){}});
+}
+// onYes 只在按「確定」時執行；退回原生 confirm 時是同步執行（與改版前相同）
+function uiConfirm(msg, onYes, opt){
+  opt = opt || {};
+  if(!DLG_OK){ if(confirm(msg)) onYes(); return; }
+  dlgOpen({msg, ok: opt.ok || "確定", cancel: opt.cancel || "取消",
+           focus: opt.danger ? "cancel" : "ok",
+           done(v){ if(v === "ok") onYes(); }});
+}
+
+// 複製文字（2026-11-25，依 Modern Web Guidance「copy-button」）：
+// 先用 navigator.clipboard；沒有或被擋才退回已淘汰的 execCommand。回傳是否成功。
+async function copyText(text, ta){
+  try{
+    if(typeof navigator !== "undefined" && navigator.clipboard && navigator.clipboard.writeText){
+      await navigator.clipboard.writeText(text); return true;
+    }
+  }catch(e){}
+  try{ if(ta) ta.select(); return !!document.execCommand("copy"); }catch(e){ return false; }
 }
 if(typeof window !== "undefined" && typeof window.addEventListener === "function"){
   window.addEventListener("error", e => reportError("頁面", (e && (e.error || e.message)) || e));
@@ -1363,11 +1449,15 @@ function setWho(sid, how){
 }
 
 function askWho(){
-  const list = STUDENTS.map((x,i) => `${i+1}. ${x[1]}`).join("\n");
-  const pick = prompt(`你是誰？輸入號碼：\n${list}`, "1");
-  const i = parseInt(pick, 10) - 1;
-  if(!(i >= 0 && i < STUDENTS.length)) return;
-  setWho(STUDENTS[i][0], "第一次認人");
+  const pickIdx = i => { if(i >= 0 && i < STUDENTS.length) setWho(STUDENTS[i][0], "第一次認人"); };
+  if(!DLG_OK){                            // 舊手機／測試環境：照舊輸入號碼
+    const list = STUDENTS.map((x,i) => `${i+1}. ${x[1]}`).join("\n");
+    const pick = prompt(`你是誰？輸入號碼：\n${list}`, "1");
+    pickIdx(parseInt(pick, 10) - 1);
+    return;
+  }
+  dlgOpen({msg:"你是誰？點自己的名字：", choices: STUDENTS.map(x => x[1]), cancel:"之後再說",
+           done: safe("認人", v => { if(/^c\d+$/.test(v)) pickIdx(parseInt(v.slice(1), 10)); })});
 }
 
 // 老師專用的補救入口：網址後面加 ?who=A。孩子在畫面上找不到這個入口。
@@ -1382,7 +1472,7 @@ function whoFromURL(){
 function startRound(drillOnly){
   const items = composeRound(drillOnly ? null : (ST.week||1), drillOnly === true);
   if(!items.length){
-    alert(drillOnly ? "目前沒有待克服的錯題，先去刷一輪吧！" : "這一週的題目都練完了，換一週吧！");
+    uiAlert(drillOnly ? "目前沒有待克服的錯題，先去刷一輪吧！" : "這一週的題目都練完了，換一週吧！");
     return;
   }
   RUN = {items, i:0, results:[], picks:[], drill:drillOnly === true,
@@ -1497,7 +1587,14 @@ function nextQ(){
 }
 function submitExam(){
   const blank = RUN.items.filter((_,i) => !RUN.picks[i]).length;
-  if(blank && !confirm(`還有 ${blank} 題沒作答，確定交卷？沒作答會算答錯。`)) return;
+  if(blank){
+    uiConfirm(`還有 ${blank} 題沒作答，確定交卷？沒作答會算答錯。`, safe("交卷", gradeExam),
+              {ok:"交卷", cancel:"再檢查一下"});
+    return;
+  }
+  gradeExam();
+}
+function gradeExam(){
   stopTimer();
   RUN.graded = true; RUN.cleared = 0;
   RUN.items.forEach((item, i) => {
@@ -1752,10 +1849,10 @@ async function sendReport(w){
   if(!win){
     try{
       await navigator.clipboard.writeText(text);
-      alert("已複製報告，貼到 LINE 傳給老師就好。");
+      uiAlert("已複製報告，貼到 LINE 傳給老師就好。");
     }catch(e){
       showReport(w);
-      alert("請手動全選下方文字複製，傳給老師。");
+      uiAlert("請手動全選下方文字複製，傳給老師。");
     }
   }
 }
@@ -1765,8 +1862,10 @@ function doExport(){
   $("backupBox").classList.remove("hidden");
   const ta = $("backupTa");
   ta.value = JSON.stringify(ST);
-  ta.select(); try{ document.execCommand("copy"); }catch(e){}
-  alert("進度碼已放進下方框框（也試著複製到剪貼簿了）。傳給老師，老師貼進「老師」頁就能看到弱點分析。");
+  ta.select();
+  copyText(ta.value, ta).then(ok => uiAlert(ok
+    ? "進度碼已放進下方框框，也複製到剪貼簿了。傳給老師，老師貼進「老師」頁就能看到弱點分析。"
+    : "進度碼已放進下方框框（自動複製沒成功，請手動全選複製）。傳給老師，老師貼進「老師」頁就能看到弱點分析。"));
 }
 function doImport(){
   try{
@@ -1785,8 +1884,8 @@ function doImport(){
     if(keepSid){ ST.sid = keepSid; ST.name = keepName; }
     ST.audit = a;
     saveState(); sync(); renderHome();
-    alert("匯入成功！（匯入這件事會記錄給老師看）");
-  }catch(e){ alert("匯入失敗：內容不是有效的進度碼"); }
+    uiAlert("匯入成功！（匯入這件事會記錄給老師看）");
+  }catch(e){ uiAlert("匯入失敗：內容不是有效的進度碼"); }
 }
 
 // ── 啟動 ───────────────────────────────────────────
@@ -1806,9 +1905,9 @@ async function boot(){
   $("btnAgain").onclick = safe("再來一輪", () => startRound(RUN && RUN.drill));
   $("btnHome").onclick = safe("回首頁", () => { renderHome(); show("scr-home"); });
   $("btnQuit").onclick = () => {
-    if(confirm("要中斷這一輪嗎？已經作答的都留了紀錄，不會白做。")){
-      stopTimer(); renderHome(); show("scr-home");
-    }
+    uiConfirm("要中斷這一輪嗎？已經作答的都留了紀錄，不會白做。",
+              safe("中斷", () => { stopTimer(); renderHome(); show("scr-home"); }),
+              {ok:"中斷", cancel:"繼續作答", danger:true});
   };
   $("btnTeach").onclick = () => renderTeach(ST);
   $("btnTeachHome").onclick = safe("回首頁", () => { renderHome(); show("scr-home"); });
@@ -1820,8 +1919,8 @@ async function boot(){
     if(m){
       const s = unpackWeek(m[0]);
       if(s){
-        if(s.sig === "bad") alert("⚠️ 這份成績碼的校驗和對不上——內容被改過。\n下面的數字不可信。");
-        else if(s.sig === "none") alert("提醒：這是舊版的成績碼，沒有校驗和，無法確認有沒有被改過。");
+        if(s.sig === "bad") uiAlert("⚠️ 這份成績碼的校驗和對不上——內容被改過。\n下面的數字不可信。");
+        else if(s.sig === "none") uiAlert("提醒：這是舊版的成績碼，沒有校驗和，無法確認有沒有被改過。");
         renderTeach(s); return;
       }
     }
@@ -1829,12 +1928,11 @@ async function boot(){
       const s = JSON.parse(raw);
       if(!s || typeof s.q !== "object") throw 0;
       renderTeach(Object.assign(freshState(), s));
-    }catch(e){ alert("讀不到：貼的內容裡找不到成績碼"); }
+    }catch(e){ uiAlert("讀不到：貼的內容裡找不到成績碼"); }
   };
   $("btnRepCopy").onclick = () => {
     const ta = $("repTa"); ta.select();
-    try{ document.execCommand("copy"); alert("已複製，貼到 LINE 傳給老師就好。"); }
-    catch(e){ alert("複製失敗，請手動全選複製。"); }
+    copyText(ta.value, ta).then(ok => uiAlert(ok ? "已複製，貼到 LINE 傳給老師就好。" : "複製失敗，請手動全選複製。"));
   };
   $("btnRepClose").onclick = () => $("reportCard").classList.add("hidden");
   $("btnExport").onclick = doExport;
@@ -1844,9 +1942,12 @@ async function boot(){
   // 下次存檔會落回舊格子，另一個孩子的那一格也還在，狀態會很混亂。
   $("btnReset").onclick = () => {
     const n = Object.keys(ST.q || {}).length;
-    if(!confirm(`確定把「${ST.name || "這個人"}」的進度歸零？\n\n`
+    uiConfirm(`確定把「${ST.name || "這個人"}」的進度歸零？\n\n`
               + `${n} 題的作答紀錄會全部消失，而且救不回來。\n`
-              + `（歸零這件事會記錄下來給老師看，不會消失。）`)) return;
+              + `（歸零這件事會記錄下來給老師看，不會消失。）`,
+              safe("歸零", () => doReset(n)), {ok:"歸零", cancel:"不要", danger:true});
+  };
+  function doReset(n){
     // 稽核欄位跨越歸零保留——歸零本身就是要被看見的事。
     const a = Object.assign(freshAudit(), ST.audit || {});
     a.resets = (a.resets || 0) + 1;
@@ -1856,7 +1957,7 @@ async function boot(){
     INTENDED_WIPE = true;               // 歸零是故意的：備份照存，但不記成「意外遺失」
     try{ saveState(); } finally { INTENDED_WIPE = false; }
     sync(); renderHome();
-  };
+  }
   renderHome(); show("scr-home");
   // 老師給的補救網址（?who=A）優先；否則第一次進來自動問一次。
   const forced = whoFromURL();
