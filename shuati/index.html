@@ -425,9 +425,9 @@ const MISS_OUT = 2;
 // （重做多半答對），正確率會憑空變好。改成只砍重做、首答一律保留，見 trimLog()。
 const LOG_MAX = 12000;
 // 顏色照「難度階段」給（入門→挑戰四段），不是照週——20 週用 20 個顏色會變花。
-const PCOLOR = {"入門":"var(--w3)", "基礎":"var(--w1)", "進階":"var(--w4)", "挑戰":"var(--w5)", "錯題重練":"var(--w2)"};
-// ⚠️ 地圖只畫列在這裡的階段。新增階段（例：2026-10-03 的錯題重練週）忘了加，那幾週就整排不見
-const PHASE_ORDER = ["入門","基礎","進階","挑戰","錯題重練"];
+const PCOLOR = {"入門":"var(--w3)", "基礎":"var(--w1)", "進階":"var(--w4)", "挑戰":"var(--w5)", "錯題重練":"var(--w2)", "模擬考":"var(--w6)"};
+// ⚠️ 地圖只畫列在這裡的階段。新增階段（例：2026-10-03 的錯題重練週、2026-11-26 的模擬考週）忘了加，那幾週就整排不見
+const PHASE_ORDER = ["入門","基礎","進階","挑戰","錯題重練","模擬考"];
 
 let DB = null, IDX = null, ST = null, RUN = null;
 let TEACH = null;               // 老師頁正在看的資料（預設是本機的 ST）
@@ -1303,10 +1303,12 @@ function ringSVG(pct){
 }
 // 地圖下方說明特殊週；哪一類沒有就不寫（不能出現「第 undefined 週」）
 function specialNote(special){
-  const exam = special.filter(w => WINFO(w).phase !== "錯題重練");
+  const exam = special.filter(w => !["錯題重練","模擬考"].includes(WINFO(w).phase));
   const redo = special.filter(w => WINFO(w).phase === "錯題重練");
+  const mock = special.filter(w => WINFO(w).phase === "模擬考");    // 2026-11-26 桃連區模擬考 106～111
   return (exam.length ? `第 ${exam.join("、")} 週是第一次複習考（原題與變化題）。` : "") +
-         (redo.length ? `第 ${redo[0]}～${redo[redo.length-1]} 週是錯題重練（前面錯過的題再做一次）。` : "");
+         (redo.length ? `第 ${redo[0]}～${redo[redo.length-1]} 週是錯題重練（前面錯過的題再做一次）。` : "") +
+         (mock.length ? `第 ${mock[0]}～${mock[mock.length-1]} 週是桃連區模擬考歷屆試題。` : "");
 }
 function renderHome(){
   if(PENDING_ROWS && RESTORE_OK_SCREENS.includes(SCREEN)){
@@ -1679,7 +1681,8 @@ function renderTeach(st){
 
   // 課表：每週題型配比一覽（老師排進度用）
   // 2026-10-31 加語文常識、應用文（六書字體、題辭稱謂書信對聯，放在錯題重練週；加入常識題_20261031.py）
-  const SUBS = ["字音","字形","字義","詞語運用","成語俗諺","標點符號","語文常識","應用文","白話閱讀","文言閱讀","寫作手法"];
+  // 2026-11-26 加國學常識、文化常識（只出現在第 34～37 週模擬考；加入桃連模擬考_20261126.py）
+  const SUBS = ["字音","字形","字義","詞語運用","成語俗諺","標點符號","語文常識","應用文","國學常識","文化常識","白話閱讀","文言閱讀","寫作手法"];
   $("tPlan").innerHTML =
     `<table style="border-collapse:collapse; font-size:12.5px; white-space:nowrap">
       <tr><th style="text-align:left;padding:4px 7px">週</th><th style="padding:4px 5px">階段</th>
